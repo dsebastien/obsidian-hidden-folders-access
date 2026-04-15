@@ -1,0 +1,63 @@
+# Architecture
+
+## Goal
+
+Make Obsidian treat selected hidden root-level folders (names starting with `.`, e.g. `.claude`) as first-class vault content: they appear in the file tree, the metadata cache, the link graph, and Bases, and they stay in sync with on-disk changes. On-disk names are preserved so external tools (Claude Code, git, etc.) keep working unchanged.
+
+## Why monkey-patching
+
+Obsidian has no public API for whitelisting hidden paths. The adapter-level hidden filter is applied in two undocumented helpers (`listRecursiveChild` and `reconcileFile`) via an internal `ru(path)` predicate. Symlinks and folder renames were rejected because they break Sync / cross-platform behaviour and surprise external tools. Plugins like Hider manipulate the DOM; that does not help the metadata cache or Bases.
+
+## Components
+
+```
+src/
+  main.ts                       Plugin default export
+  app/
+    plugin.ts                   Lifecycle, settings load/save, command registration
+    services/
+      hidden-folders-indexer.ts Core: scans, patches, populates, watches, tears down
+    settings/
+      settings-tab.ts           UI: lists hidden root folders, per-folder toggle, rescan
+    types/
+      plugin-settings.intf.ts   PluginSettings { enabledFolders: string[] }
+  utils/
+    log.ts                      Structured logging
+```
+
+## Indexer strategy (`HiddenFoldersIndexer`)
+
+1. **Discover** — `adapter.list('/')` returns hidden folders (the filter is applied elsewhere). The indexer lists them, removes the Obsidian config directory, and exposes the result to the settings tab.
+2. **Patch** — on first enable, wrap two adapter methods:
+    - `listRecursiveChild(parent, name)`: the original drops hidden paths by calling `reconcileDeletion`. Our wrapper, for whitelisted paths, bypasses the filter and calls `reconcileFileInternal(path, path)` directly.
+    - `reconcileFile(e, t, silent)`: same idea — when a watcher event fires for a whitelisted path, skip the hidden check and recurse via `reconcileFileInternal`.
+      Originals are restored once the last folder is disabled.
+3. **Populate** — for each enabled folder call `reconcileFolderCreation(path, path)`. It triggers a cascade: `reconcileFolderCreation → listRecursive → listRecursiveChild (patched) → reconcileFileInternal → reconcileFileCreation/reconcileFolderCreation`. All descendants are injected into `adapter.files`, `vault.fileMap`, and emit the vault `create` events that drive the metadata cache and Bases.
+4. **Watch** — call `adapter.watchHiddenRecursive(path)` to register fs.watch handlers on every subdirectory. Watcher events flow through the patched `reconcileFile`, so modify/rename/delete events propagate.
+5. **Disable** — stop every watcher whose key falls under the disabled prefix, then call `reconcileDeletion` for every injected entry (bottom-up so folders empty before they are removed). When the last enabled folder is disabled, restore the original adapter methods.
+
+## Lifecycle
+
+- `onload`: load settings → register settings tab → register `rescan-hidden-folders` command → on `workspace.onLayoutReady`, call `runBackgroundSync(settings.enabledFolders)`.
+- `onunload`: `indexer.teardown()` removes every injected entry, stops every watcher, and restores the adapter methods.
+
+## Background task model
+
+Discovery (`listHiddenRootFolders`) is decoupled from indexing: the settings tab shows the folder list instantly without touching the vault cache. Indexing only happens when the user toggles a folder or when settings change at load time.
+
+Every enable/disable runs as a fire-and-forget background task owned by the plugin:
+
+- `updateEnabledFolders` persists the new list synchronously (awaited `saveData`) and then calls `runBackgroundSync` which diffs the desired set against `indexer.getEnabledPrefixes()` and spawns one task per delta.
+- Each task creates a persistent `Notice` (timeout 0), polls the loaded-file count every 500 ms to update the message, and hides the notice after a short grace period on completion or error.
+- `HiddenFoldersIndexer` dedupes concurrent operations per path via an `inFlight` map: calling `enablePath('.claude')` twice before the first completes returns the same in-flight promise.
+- The disable loop yields to the event loop every 250 `reconcileDeletion` calls so the main thread can keep servicing UI events on large trees.
+
+## Desktop-only
+
+The strategy relies on Obsidian's desktop `FileSystemAdapter` (`reconcile*`, `watchHiddenRecursive`, `watchers`). Mobile uses `CapacitorAdapter` which doesn't expose those internals. The manifest sets `isDesktopOnly: true`.
+
+## Known trade-offs
+
+- **Undocumented internals** — the plugin calls methods Obsidian may rename without notice. Updates across Obsidian releases may require adaptation.
+- **Large folders** — the initial cascade indexes every descendant synchronously (awaited). A folder with thousands of markdown files can freeze the UI for a few seconds while the metadata worker catches up. One-off per plugin load.
+- **Sync** — Sync operates on the adapter's logical paths. Because we preserve on-disk names (`.claude/...`) and inject them into the vault cache, Sync sees files under their real paths. Other devices running the plugin see the same content; devices without the plugin simply don't see the files, identical to baseline Obsidian.

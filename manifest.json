@@ -1,0 +1,11 @@
+{
+    "id": "hidden-folders-access",
+    "name": "Hidden Folders Access",
+    "description": "Make Obsidian index hidden root-level folders (e.g. .claude) so they appear in the file tree, metadata cache, and Bases.",
+    "version": "0.1.0",
+    "minAppVersion": "1.4.0",
+    "isDesktopOnly": true,
+    "author": "Sébastien Dubois",
+    "authorUrl": "https://dsebastien.net",
+    "fundingUrl": "https://www.buymeacoffee.com/dsebastien"
+}
