@@ -1,3 +1,8 @@
+---
+title: Configuration
+nav_order: 3
+---
+
 # Configuration
 
 Everything is configured in **Settings → Hidden Folders Access**.

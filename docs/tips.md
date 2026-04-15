@@ -1,3 +1,8 @@
+---
+title: Tips & best practices
+nav_order: 4
+---
+
 # Tips and Best Practices
 
 ## Common Use Cases

@@ -1,3 +1,9 @@
+---
+title: Overview
+nav_order: 1
+permalink: /
+---
+
 # Hidden Folders Access
 
 Make Obsidian index hidden root-level folders (names starting with a dot, e.g. `.claude`, `.github`) so they show up in the file explorer, the metadata cache, the link graph, and Bases — while keeping the folders hidden on disk so external tools (Claude Code, git, etc.) keep working unchanged.

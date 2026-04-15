@@ -1,0 +1,31 @@
+title: Hidden Folders Access
+description: Obsidian plugin that makes hidden folders first-class citizens of your vault.
+url: https://dsebastien.github.io
+baseurl: /obsidian-hidden-folders-access
+
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
+
+# Left-sidebar "auxiliary" links (top-right on desktop).
+aux_links:
+    GitHub: https://github.com/dsebastien/obsidian-hidden-folders-access
+
+# Client-side search (no Algolia / external service).
+search_enabled: true
+search:
+    heading_level: 3
+    previews: 2
+    preview_words_before: 5
+    preview_words_after: 10
+
+# The ordered sidebar entries are driven by `nav_order` in each page's
+# frontmatter — anything without `nav_order` falls to the bottom.
+heading_anchors: true
+
+color_scheme: light
+
+# Exclude files that aren't user-facing docs.
+exclude:
+    - SUMMARY.md
