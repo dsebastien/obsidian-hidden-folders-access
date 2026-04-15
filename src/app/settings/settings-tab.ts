@@ -1,6 +1,10 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian'
 import type { HiddenFoldersAccessPlugin } from '../plugin'
+import { DEFAULT_ALLOWED_EXTENSIONS } from '../types/plugin-settings.intf'
+import { parseExtensions } from '../../utils/extensions'
 import { log } from '../../utils/log'
+
+const FILE_TYPES_DEBOUNCE_MS = 800
 
 export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     plugin: HiddenFoldersAccessPlugin
@@ -16,6 +20,7 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
 
         this.renderIntro(containerEl)
         void this.renderFolderList(containerEl)
+        this.renderFileTypes(containerEl)
         this.renderSupportHeader(containerEl)
     }
 
@@ -99,6 +104,71 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                     })
             })
         }
+    }
+
+    private renderFileTypes(containerEl: HTMLElement): void {
+        new Setting(containerEl).setName('File types').setHeading()
+
+        const desc = containerEl.createDiv()
+        desc.createEl('p', {
+            text: 'Comma-separated list of file extensions (without leading dot) that should be indexed inside enabled hidden folders. Folders are always traversed — this list only filters which files are injected into Obsidian. Defaults cover every format Obsidian supports natively (Markdown, Canvas, Bases, images, PDF, audio, video).'
+        })
+        desc.createEl('p', {
+            text: 'Changes are saved automatically. Every enabled folder is rebuilt in the background with per-folder progress notices.'
+        })
+
+        let pending = this.plugin.settings.allowedExtensions.join(', ')
+        let debounceHandle: number | null = null
+
+        const commit = (raw: string, immediate = false): void => {
+            const extensions = parseExtensions(raw)
+            const current = this.plugin.settings.allowedExtensions.join(',')
+            const next = extensions.join(',')
+            if (current === next) return
+            if (debounceHandle !== null) {
+                window.clearTimeout(debounceHandle)
+                debounceHandle = null
+            }
+            const apply = (): void => {
+                void this.plugin.updateAllowedExtensions(extensions)
+            }
+            if (immediate) {
+                apply()
+            } else {
+                debounceHandle = window.setTimeout(apply, FILE_TYPES_DEBOUNCE_MS)
+            }
+        }
+
+        new Setting(containerEl)
+            .setName('Allowed extensions')
+            .setDesc('e.g. md, canvas, base, png, pdf')
+            .addTextArea((textArea) => {
+                textArea
+                    .setPlaceholder('md, canvas, base, …')
+                    .setValue(pending)
+                    .onChange((value) => {
+                        pending = value
+                        commit(value)
+                    })
+                textArea.inputEl.rows = 3
+                textArea.inputEl.classList.add('w-full')
+                textArea.inputEl.addEventListener('blur', () => {
+                    commit(pending, true)
+                })
+            })
+
+        new Setting(containerEl).addButton((button) =>
+            button.setButtonText('Reset to defaults').onClick(() => {
+                pending = [...DEFAULT_ALLOWED_EXTENSIONS].join(', ')
+                if (debounceHandle !== null) {
+                    window.clearTimeout(debounceHandle)
+                    debounceHandle = null
+                }
+                void this.plugin.updateAllowedExtensions([...DEFAULT_ALLOWED_EXTENSIONS])
+                new Notice('Allowed extensions reset to defaults. Rebuilding…')
+                this.display()
+            })
+        )
     }
 
     private renderSupportHeader(containerEl: HTMLElement): void {

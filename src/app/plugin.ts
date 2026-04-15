@@ -1,7 +1,7 @@
 import { Notice, Plugin } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
-import { DEFAULT_SETTINGS } from './types/plugin-settings.intf'
+import { DEFAULT_ALLOWED_EXTENSIONS, DEFAULT_SETTINGS } from './types/plugin-settings.intf'
 import type { PluginSettings } from './types/plugin-settings.intf'
 import { HiddenFoldersAccessSettingsTab } from './settings/settings-tab'
 import { HiddenFoldersIndexer } from './services/hidden-folders-indexer'
@@ -50,11 +50,42 @@ export class HiddenFoldersAccessPlugin extends Plugin {
                     (entry): entry is string => typeof entry === 'string'
                 )
             }
+            if (loaded && Array.isArray(loaded.allowedExtensions)) {
+                draft.allowedExtensions = loaded.allowedExtensions
+                    .filter((entry): entry is string => typeof entry === 'string')
+                    .map((e) => e.replace(/^\./, '').trim().toLowerCase())
+                    .filter(Boolean)
+            } else {
+                // Older installs (pre-allowlist) fall back to the defaults.
+                draft.allowedExtensions = [...DEFAULT_ALLOWED_EXTENSIONS]
+            }
         })
+
+        this.indexer.setAllowedExtensions(this.settings.allowedExtensions)
     }
 
     async saveSettings(): Promise<void> {
         await this.saveData(this.settings)
+    }
+
+    /**
+     * Replace the allowed-extension list and re-apply it to every currently
+     * enabled folder. Returns once the new list is persisted — the rebuild of
+     * each folder runs in the background with its own progress notice.
+     */
+    async updateAllowedExtensions(extensions: readonly string[]): Promise<void> {
+        const normalized = Array.from(
+            new Set(
+                extensions.map((e) => e.replace(/^\./, '').trim().toLowerCase()).filter(Boolean)
+            )
+        ).sort()
+
+        this.settings = produce(this.settings, (draft: Draft<PluginSettings>) => {
+            draft.allowedExtensions = normalized
+        })
+        await this.saveSettings()
+        this.indexer.setAllowedExtensions(normalized)
+        this.runBackgroundRebuild(this.settings.enabledFolders)
     }
 
     /**
@@ -89,6 +120,44 @@ export class HiddenFoldersAccessPlugin extends Plugin {
                 this.startDisableTask(path)
             }
         }
+    }
+
+    /**
+     * Force a full disable + re-enable for every folder in `target`. Used when
+     * a setting (allowlist) changes and the existing injected entries need to
+     * be rebuilt under the new filter.
+     */
+    private runBackgroundRebuild(target: readonly string[]): void {
+        for (const path of target) {
+            if (this.indexer.isBusy(path)) continue
+            this.startRebuildTask(path)
+        }
+    }
+
+    private startRebuildTask(path: string): void {
+        const notice = new Notice(`Rebuilding index for ${path}…`, 0)
+        const tick = window.setInterval(() => {
+            const count = this.countLoaded(path)
+            notice.setMessage(`Rebuilding index for ${path}… ${count} entries`)
+        }, INDEX_PROGRESS_INTERVAL_MS)
+
+        this.indexer
+            .disablePath(path)
+            .then(() => this.indexer.enablePath(path))
+            .then(() => {
+                const count = this.countLoaded(path)
+                notice.setMessage(`Indexed ${path} (${count} entries)`)
+                window.setTimeout(() => notice.hide(), COMPLETION_NOTICE_MS)
+            })
+            .catch((err: unknown) => {
+                log(`Rebuild failed for "${path}"`, 'error', err)
+                const message = err instanceof Error ? err.message : String(err)
+                notice.setMessage(`Failed to rebuild ${path}: ${message}`)
+                window.setTimeout(() => notice.hide(), ERROR_NOTICE_MS)
+            })
+            .finally(() => {
+                window.clearInterval(tick)
+            })
     }
 
     private startEnableTask(path: string): void {

@@ -1,4 +1,6 @@
 import { type App, type DataAdapter, normalizePath, TAbstractFile } from 'obsidian'
+import { stat } from 'node:fs/promises'
+import { extensionNotAllowed } from '../../utils/extensions'
 import { log } from '../../utils/log'
 
 type ReconcileFn = (fullPath: string, path: string, silent?: boolean) => Promise<void>
@@ -57,9 +59,29 @@ export class HiddenFoldersIndexer {
     private readonly enabledPrefixes = new Set<string>()
     private readonly watchedPrefixes = new Set<string>()
     private readonly inFlight = new Map<string, Promise<void>>()
+    private allowedExtensions: Set<string> = new Set()
     private patches: PatchMemo | null = null
 
     constructor(private readonly app: App) {}
+
+    /**
+     * Replace the extension allowlist. Paths with extensions not in this set
+     * are skipped during indexing and when fs events fire. Changing the list
+     * only affects future operations — already-injected entries are not
+     * retroactively removed. Call `sync()` or toggle the folders to re-apply.
+     */
+    setAllowedExtensions(extensions: readonly string[]): void {
+        this.allowedExtensions = new Set(
+            extensions.map((e) => e.replace(/^\./, '').trim().toLowerCase()).filter(Boolean)
+        )
+    }
+
+    /**
+     * Read-only view of the current extension allowlist (lowercase, no dots).
+     */
+    getAllowedExtensions(): readonly string[] {
+        return Array.from(this.allowedExtensions).sort()
+    }
 
     /**
      * Read-only view of the prefixes that are currently enabled.
@@ -255,6 +277,9 @@ export class HiddenFoldersIndexer {
             if (!isEnabled(normalized)) {
                 return originalListRecursiveChild(parent, name)
             }
+            if (await this.shouldSkipByExtension(adapter, normalized)) {
+                return
+            }
             adapter.trigger('raw', normalized)
             try {
                 await adapter.reconcileFileInternal(normalized, normalized)
@@ -270,6 +295,9 @@ export class HiddenFoldersIndexer {
         adapter.reconcileFile = async (e: string, t: string, silent?: boolean): Promise<void> => {
             if (!isEnabled(t)) {
                 return originalReconcileFile(e, t, silent)
+            }
+            if (await this.shouldSkipByExtension(adapter, t)) {
+                return
             }
             const flag = silent ?? true
             adapter.trigger('raw', t)
@@ -293,6 +321,30 @@ export class HiddenFoldersIndexer {
         adapter.listRecursiveChild = this.patches.originalListRecursiveChild
         adapter.reconcileFile = this.patches.originalReconcileFile
         this.patches = null
+    }
+
+    /**
+     * Returns true when `path` points to a regular file whose extension is
+     * not on the allowlist. Folders, symlinks, and paths that no longer exist
+     * are always allowed through — the downstream reconcile logic handles them.
+     *
+     * Uses `fs.stat` (desktop-only) to distinguish files from folders reliably,
+     * since folder names can contain dots and file names can lack extensions.
+     */
+    private async shouldSkipByExtension(adapter: InternalAdapter, path: string): Promise<boolean> {
+        if (!extensionNotAllowed(path, this.allowedExtensions)) return false
+        let fullPath: string
+        try {
+            fullPath = adapter.getFullRealPath(path)
+        } catch {
+            return false
+        }
+        try {
+            const s = await stat(fullPath)
+            return s.isFile()
+        } catch {
+            return false
+        }
     }
 
     private isAnyEnabled(path: string): boolean {

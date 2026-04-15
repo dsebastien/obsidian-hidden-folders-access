@@ -17,9 +17,19 @@ Your selection is persisted per-vault in `.obsidian/plugins/hidden-folders-acces
 
 The settings tab also has a **Refresh** button that re-scans the vault root for newly-created hidden folders. That only refreshes the list — it does not touch already-indexed folders.
 
+## Controlling which file types get indexed
+
+Under the **File types** heading in the settings tab you'll find an **Allowed extensions** field — a comma-separated list of extensions (no leading dot) that are actually injected into Obsidian. Defaults cover every format Obsidian supports natively (Markdown, Canvas, Bases, images, PDF, audio, video). To restrict indexing to a subset:
+
+1. Replace the list with the extensions you care about (e.g. `md, canvas, base`).
+2. The change is saved automatically — every enabled folder is rebuilt in the background with its own progress notice.
+3. Click **Reset to defaults** to restore the full list.
+
+Folders are always traversed regardless of the allowlist, so nested markdown files remain reachable even if their parent folder sits under sub-folders containing disallowed files.
+
 ## What gets indexed
 
-For every enabled folder, Obsidian treats every descendant (files and sub-folders) as normal vault content:
+For every enabled folder (and every file type present in the allowlist), Obsidian treats every descendant as normal vault content:
 
 - **File explorer**: folders and files appear under their real names (leading dot preserved).
 - **Quick Switcher / Search**: hidden files are searchable by name and content.

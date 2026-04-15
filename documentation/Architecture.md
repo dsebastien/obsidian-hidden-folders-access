@@ -32,13 +32,16 @@ src/
     - `listRecursiveChild(parent, name)`: the original drops hidden paths by calling `reconcileDeletion`. Our wrapper, for whitelisted paths, bypasses the filter and calls `reconcileFileInternal(path, path)` directly.
     - `reconcileFile(e, t, silent)`: same idea — when a watcher event fires for a whitelisted path, skip the hidden check and recurse via `reconcileFileInternal`.
       Originals are restored once the last folder is disabled.
-3. **Populate** — for each enabled folder call `reconcileFolderCreation(path, path)`. It triggers a cascade: `reconcileFolderCreation → listRecursive → listRecursiveChild (patched) → reconcileFileInternal → reconcileFileCreation/reconcileFolderCreation`. All descendants are injected into `adapter.files`, `vault.fileMap`, and emit the vault `create` events that drive the metadata cache and Bases.
-4. **Watch** — call `adapter.watchHiddenRecursive(path)` to register fs.watch handlers on every subdirectory. Watcher events flow through the patched `reconcileFile`, so modify/rename/delete events propagate.
-5. **Disable** — stop every watcher whose key falls under the disabled prefix, then call `reconcileDeletion` for every injected entry (bottom-up so folders empty before they are removed). When the last enabled folder is disabled, restore the original adapter methods.
+3. **Filter** — both patched methods consult the indexer's `allowedExtensions` set. For a path whose basename has a disallowed extension, the indexer runs a single `fs.stat` (desktop-only) and skips the reconcile entirely when the entry is a file. Folders, extensionless names, and dot-prefixed names (like `.claude`) always pass through — they're cheap to traverse, and the filter would otherwise hide nested content. This keeps the cascade walking every directory while only injecting files the user cares about.
+4. **Populate** — for each enabled folder call `reconcileFolderCreation(path, path)`. It triggers a cascade: `reconcileFolderCreation → listRecursive → listRecursiveChild (patched) → reconcileFileInternal → reconcileFileCreation/reconcileFolderCreation`. All descendants are injected into `adapter.files`, `vault.fileMap`, and emit the vault `create` events that drive the metadata cache and Bases.
+5. **Watch** — call `adapter.watchHiddenRecursive(path)` to register fs.watch handlers on every subdirectory. Watcher events flow through the patched `reconcileFile`, so modify/rename/delete events propagate.
+6. **Disable** — stop every watcher whose key falls under the disabled prefix, then call `reconcileDeletion` for every injected entry (bottom-up so folders empty before they are removed). When the last enabled folder is disabled, restore the original adapter methods.
 
 ## Lifecycle
 
 - `onload`: load settings → register settings tab → register `rescan-hidden-folders` command → on `workspace.onLayoutReady`, call `runBackgroundSync(settings.enabledFolders)`.
+- `loadSettings` also pushes `settings.allowedExtensions` into the indexer before any reconcile happens, so the filter is live for the initial `runBackgroundSync`.
+- `updateAllowedExtensions(list)`: persists the new list, refreshes the indexer's allowlist, then calls `runBackgroundRebuild` which spawns one disable-then-enable task per currently-enabled folder. Each task shows a single "Rebuilding index for <path>… N entries" notice that converges to the final count.
 - `onunload`: `indexer.teardown()` removes every injected entry, stops every watcher, and restores the adapter methods.
 
 ## Background task model

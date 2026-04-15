@@ -25,5 +25,10 @@ void mock.module('obsidian', () => ({
     AbstractInputSuggest: class AbstractInputSuggest {},
     SearchComponent: class SearchComponent {},
     debounce: (fn: (...args: unknown[]) => unknown) => fn,
-    setIcon: () => {}
+    setIcon: () => {},
+    normalizePath: (p: string) => {
+        const cleaned = p.replace(/\/+/g, '/')
+        const trimmed = cleaned.replace(/^\/+|\/+$/g, '')
+        return trimmed || '/'
+    }
 }))
