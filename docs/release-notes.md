@@ -2,13 +2,11 @@
 
 ## 0.1.0 (2026-04-15)
 
-Initial release.
-
 ### Features
 
-- Per-folder opt-in for hidden root-level folders (e.g. `.claude`, `.github`).
-- Full Obsidian integration: file explorer, metadata cache, link graph, Bases.
-- Live updates via filesystem watchers (create / modify / rename / delete).
-- Clean disable and uninstall — injected entries are removed from the vault cache and the adapter is restored to its original state.
-- Configurable file-type allowlist (defaults to every Obsidian-native format: Markdown, Canvas, Bases, images, PDF, audio, video). Edits are applied via an explicit **Save** button — a full rebuild only runs once per deliberate change. **Reset to defaults** applies immediately.
-- `Hidden Folders Access: Rescan hidden folders` command for forcing a refresh.
+- **all:** added explicit save buttons for the settings
+- **all:** added extension filtering
+
+## 0.1.0 (2026-04-15)
+
+Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
