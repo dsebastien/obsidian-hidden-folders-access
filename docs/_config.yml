@@ -6,7 +6,7 @@ baseurl: /obsidian-hidden-folders-access
 remote_theme: just-the-docs/just-the-docs
 
 plugins:
-  - jekyll-remote-theme
+    - jekyll-remote-theme
 
 # Left-sidebar "auxiliary" links (top-right on desktop).
 aux_links:
