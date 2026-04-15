@@ -11,8 +11,8 @@ Your selection is persisted per-vault in `.obsidian/plugins/hidden-folders-acces
 
 ## Commands
 
-| Command                                    | Description                                                                                                                                             |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                      | Description                                                                                                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Hidden Folders Access: Rescan hidden folders | Re-apply indexing for every enabled folder in the background. Useful after bulk-changing files on disk through a tool that can't trigger file watchers. |
 
 The settings tab also has a **Refresh** button that re-scans the vault root for newly-created hidden folders. That only refreshes the list — it does not touch already-indexed folders.
