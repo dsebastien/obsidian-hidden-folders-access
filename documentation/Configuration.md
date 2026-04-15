@@ -25,8 +25,8 @@ Loader normalisation (`Plugin.loadSettings` in `src/app/plugin.ts`):
 
 - **Hidden folders**: a list of every hidden folder discovered at the vault root (excluding the Obsidian config directory). Each entry has a toggle. Enabling a folder injects it and every descendant into the vault cache and starts fs watchers. Disabling it reverses the injection.
 - **Rescan vault root**: re-scans on-disk hidden folders (picks up newly added ones) and re-applies indexing for every enabled folder.
-- **Allowed extensions**: comma-separated list of file extensions that should be injected. Saves automatically — a short debounce on keystrokes plus an immediate save on blur — and triggers `runBackgroundRebuild` for every currently-enabled folder so the new filter is applied.
-- **Reset to defaults**: rewrites `allowedExtensions` with `DEFAULT_ALLOWED_EXTENSIONS` and rebuilds.
+- **Allowed extensions**: comma-separated textarea. Edits stay local until the user clicks the adjacent **Save** button, which calls `updateAllowedExtensions` → `runBackgroundRebuild` for every currently-enabled folder. The Save button is disabled whenever `parseExtensions(input)` equals `settings.allowedExtensions` (so whitespace, casing, duplicates, and leading dots don't count as dirty).
+- **Reset to defaults**: rewrites `allowedExtensions` with `DEFAULT_ALLOWED_EXTENSIONS` and rebuilds immediately (no Save click required).
 
 ## Commands
 

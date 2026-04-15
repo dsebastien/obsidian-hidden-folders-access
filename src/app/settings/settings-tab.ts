@@ -1,10 +1,8 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian'
+import { App, ButtonComponent, Notice, PluginSettingTab, Setting } from 'obsidian'
 import type { HiddenFoldersAccessPlugin } from '../plugin'
 import { DEFAULT_ALLOWED_EXTENSIONS } from '../types/plugin-settings.intf'
 import { parseExtensions } from '../../utils/extensions'
 import { log } from '../../utils/log'
-
-const FILE_TYPES_DEBOUNCE_MS = 800
 
 export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     plugin: HiddenFoldersAccessPlugin
@@ -114,29 +112,24 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
             text: 'Comma-separated list of file extensions (without leading dot) that should be indexed inside enabled hidden folders. Folders are always traversed — this list only filters which files are injected into Obsidian. Defaults cover every format Obsidian supports natively (Markdown, Canvas, Bases, images, PDF, audio, video).'
         })
         desc.createEl('p', {
-            text: 'Changes are saved automatically. Every enabled folder is rebuilt in the background with per-folder progress notices.'
+            text: 'Changes are applied when you click Save — this triggers a full rebuild of every enabled folder in the background.'
         })
 
         let pending = this.plugin.settings.allowedExtensions.join(', ')
-        let debounceHandle: number | null = null
+        let saveButton: ButtonComponent | null = null
 
-        const commit = (raw: string, immediate = false): void => {
-            const extensions = parseExtensions(raw)
+        // A change is "effective" only when the parsed extension list differs
+        // from what's currently persisted — whitespace, casing, duplicates and
+        // leading dots in the textarea must not count as dirty, otherwise the
+        // button is enabled when the user has changed nothing meaningful.
+        const isDirty = (raw: string): boolean => {
+            const parsed = parseExtensions(raw).join(',')
             const current = this.plugin.settings.allowedExtensions.join(',')
-            const next = extensions.join(',')
-            if (current === next) return
-            if (debounceHandle !== null) {
-                window.clearTimeout(debounceHandle)
-                debounceHandle = null
-            }
-            const apply = (): void => {
-                void this.plugin.updateAllowedExtensions(extensions)
-            }
-            if (immediate) {
-                apply()
-            } else {
-                debounceHandle = window.setTimeout(apply, FILE_TYPES_DEBOUNCE_MS)
-            }
+            return parsed !== current
+        }
+
+        const refreshDirty = (): void => {
+            saveButton?.setDisabled(!isDirty(pending))
         }
 
         new Setting(containerEl)
@@ -148,27 +141,35 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                     .setValue(pending)
                     .onChange((value) => {
                         pending = value
-                        commit(value)
+                        refreshDirty()
                     })
                 textArea.inputEl.rows = 3
                 textArea.inputEl.classList.add('w-full')
-                textArea.inputEl.addEventListener('blur', () => {
-                    commit(pending, true)
-                })
             })
 
-        new Setting(containerEl).addButton((button) =>
-            button.setButtonText('Reset to defaults').onClick(() => {
-                pending = [...DEFAULT_ALLOWED_EXTENSIONS].join(', ')
-                if (debounceHandle !== null) {
-                    window.clearTimeout(debounceHandle)
-                    debounceHandle = null
-                }
-                void this.plugin.updateAllowedExtensions([...DEFAULT_ALLOWED_EXTENSIONS])
-                new Notice('Allowed extensions reset to defaults. Rebuilding…')
-                this.display()
+        new Setting(containerEl)
+            .addButton((button) => {
+                saveButton = button
+                button
+                    .setButtonText('Save')
+                    .setCta()
+                    .setDisabled(true)
+                    .onClick(() => {
+                        if (!isDirty(pending)) return
+                        const extensions = parseExtensions(pending)
+                        void this.plugin.updateAllowedExtensions(extensions)
+                        new Notice('Rebuilding enabled folders with the new file-type filter…')
+                        saveButton?.setDisabled(true)
+                    })
             })
-        )
+            .addButton((button) =>
+                button.setButtonText('Reset to defaults').onClick(() => {
+                    pending = [...DEFAULT_ALLOWED_EXTENSIONS].join(', ')
+                    void this.plugin.updateAllowedExtensions([...DEFAULT_ALLOWED_EXTENSIONS])
+                    new Notice('Allowed extensions reset to defaults. Rebuilding…')
+                    this.display()
+                })
+            )
     }
 
     private renderSupportHeader(containerEl: HTMLElement): void {
