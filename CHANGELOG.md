@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/0.1.0...0.2.0) (2026-04-22)
+
+### Features
+
+* **all:** indexing does not fail anymore when a configured folder does not exist ([db78f3f](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/db78f3f2253934c3f46819129e839c9fef83c2ce))
+
 ## 0.1.0 (2026-04-15)
 
 ### Features
@@ -12,4 +18,5 @@ All notable changes to this project will be documented in this file.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
