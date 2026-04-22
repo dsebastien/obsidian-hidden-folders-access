@@ -71,16 +71,10 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
             return
         }
 
-        const enabled = new Set(this.plugin.settings.enabledFolders)
-        const available = new Set(hiddenFolders)
-
-        // Clean up any enabled entries that no longer exist on disk. Fire-and-
-        // forget — the persisted list is corrected and cleanup runs in the
-        // background.
-        const stale = [...enabled].filter((p) => !available.has(p))
-        if (stale.length > 0) {
-            void this.plugin.updateEnabledFolders([...enabled].filter((p) => available.has(p)))
-        }
+        // Enabled entries that no longer exist on disk are intentionally kept
+        // in the config. The indexer silently skips them and the plugin will
+        // pick them up again if/when the folder reappears (restart, toggle,
+        // rescan command).
 
         for (const folder of hiddenFolders) {
             new Setting(listContainer).setName(folder).addToggle((toggle) => {

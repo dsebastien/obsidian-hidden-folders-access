@@ -27,7 +27,7 @@ src/
 
 ## Indexer strategy (`HiddenFoldersIndexer`)
 
-1. **Discover** — `adapter.list('/')` returns hidden folders (the filter is applied elsewhere). The indexer lists them, removes the Obsidian config directory, and exposes the result to the settings tab.
+1. **Discover** — `adapter.list('/')` returns hidden folders (the filter is applied elsewhere). The indexer lists them, removes the Obsidian config directory, and exposes the result to the settings tab. The same listing powers `pathExistsOnDisk(path)`, which is used to skip configured-but-missing folders without mutating settings.
 2. **Patch** — on first enable, wrap two adapter methods:
     - `listRecursiveChild(parent, name)`: the original drops hidden paths by calling `reconcileDeletion`. Our wrapper, for whitelisted paths, bypasses the filter and calls `reconcileFileInternal(path, path)` directly.
     - `reconcileFile(e, t, silent)`: same idea — when a watcher event fires for a whitelisted path, skip the hidden check and recurse via `reconcileFileInternal`.
@@ -43,6 +43,16 @@ src/
 - `loadSettings` also pushes `settings.allowedExtensions` into the indexer before any reconcile happens, so the filter is live for the initial `runBackgroundSync`.
 - `updateAllowedExtensions(list)`: persists the new list, refreshes the indexer's allowlist, then calls `runBackgroundRebuild` which spawns one disable-then-enable task per currently-enabled folder. Each task shows a single "Rebuilding index for <path>… N entries" notice that converges to the final count.
 - `onunload`: `indexer.teardown()` removes every injected entry, stops every watcher, and restores the adapter methods.
+
+## Missing configured folders
+
+A folder listed in `settings.enabledFolders` may no longer exist on disk — the user may have deleted it externally, or it may be a stale entry from another machine. The plugin treats this as a non-error:
+
+- `startEnableTask` and `startRebuildTask` in `plugin.ts` pre-check `indexer.pathExistsOnDisk(path)` and return early without creating any `Notice` when the folder is missing. A debug log records the skip.
+- `HiddenFoldersIndexer.runEnable` runs the same check as a defensive second guard (the pre-check and the enable call are not atomic). A missing folder is logged at `debug` and the method returns without throwing, without adding to `enabledPrefixes`, and without calling `ensurePatched`.
+- The settings tab does **not** prune missing entries from `enabledFolders`. The config is preserved verbatim, so the folder is automatically re-indexed on the next sync (Obsidian restart, plugin toggle, `Rescan hidden folders` command, or the folder reappearing and being toggled again).
+
+The trade-off: a missing entry stays invisible in the settings list until it reappears on disk. Users who want to remove it permanently must untoggle it (once the folder exists) or edit `data.json` directly.
 
 ## Background task model
 

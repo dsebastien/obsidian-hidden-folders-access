@@ -54,7 +54,11 @@ Any property visible in the file's frontmatter is available as a column.
 
 - The plugin only lists folders at the vault root. Nested dot-folders aren't shown.
 - The Obsidian config directory is always excluded.
-- Make sure the folder exists on disk. Click **Rescan** in settings.
+- Make sure the folder exists on disk. Click **Refresh folder list** in settings.
+
+### An enabled folder was deleted externally
+
+Nothing to do. The entry stays in your settings, the plugin stops indexing it silently (no error notification), and if you ever recreate the folder it is picked up again on the next sync — Obsidian restart, plugin toggle, **Rescan hidden folders** command, or toggling the folder in the settings tab. If you don't intend to bring the folder back, untoggle it in settings (or edit `data.json`) to clean up the entry.
 
 ### Files don't appear after enabling a folder
 

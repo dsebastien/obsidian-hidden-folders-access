@@ -42,6 +42,10 @@ Schema:
 
 You can back up or version-control this file alongside your vault config.
 
+## Missing folders
+
+An entry in `enabledFolders` that no longer matches a folder on disk is kept as-is in the config. The plugin silently skips indexing for that entry — no error notification, no warning, no rebuild — and picks it up again automatically the next time the folder appears (Obsidian restart, plugin toggle, **Rescan hidden folders** command, or toggling the folder in the settings tab once it reappears). This keeps external workflows that delete and recreate dot-folders (e.g. re-cloning `.claude/`) from corrupting your configuration.
+
 ## Compatibility
 
 - Desktop only (the plugin manifest sets `isDesktopOnly: true`). Mobile Obsidian does not expose the filesystem primitives this plugin relies on.

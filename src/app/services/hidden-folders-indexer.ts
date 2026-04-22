@@ -113,6 +113,20 @@ export class HiddenFoldersIndexer {
     }
 
     /**
+     * True when `rawPath` points to an existing folder at the vault root.
+     * Uses `adapter.list('/')` because `adapter.exists`/`stat` apply the
+     * built-in hidden-path filter and would report `false` for dot-prefixed
+     * names even when they are present on disk.
+     */
+    async pathExistsOnDisk(rawPath: string): Promise<boolean> {
+        const path = this.normalize(rawPath)
+        if (path.length === 0) return false
+        const rootListing = await this.internalAdapter().list('/')
+        const available = rootListing.folders.map((p) => this.normalize(p))
+        return available.includes(path)
+    }
+
+    /**
      * Enable indexing for a set of hidden folders. Any folder already enabled
      * is left untouched. Any folder currently enabled but missing from `paths`
      * is disabled.
@@ -152,14 +166,13 @@ export class HiddenFoldersIndexer {
 
     private async runEnable(path: string): Promise<void> {
         const adapter = this.internalAdapter()
-        // `adapter.exists` applies Obsidian's hidden-path filter so we can't
-        // use it here. Fall back to listing the vault root and looking for
-        // the entry ourselves.
-        const rootListing = await adapter.list('/')
-        const available = rootListing.folders.map((p) => this.normalize(p))
-        if (!available.includes(path)) {
-            log(`Hidden folder "${path}" does not exist on disk`, 'warn')
-            throw new Error(`Hidden folder "${path}" does not exist on disk`)
+        // A configured folder may be missing on disk — the user could have
+        // deleted it externally, or it may not be created yet. Skip silently
+        // and leave the config untouched so the folder is picked up again on
+        // the next sync (restart, toggle, rescan command) if it reappears.
+        if (!(await this.pathExistsOnDisk(path))) {
+            log(`Hidden folder "${path}" does not exist on disk — skipping`, 'debug')
+            return
         }
 
         this.enabledPrefixes.add(path)

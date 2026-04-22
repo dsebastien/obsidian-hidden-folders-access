@@ -112,7 +112,7 @@ export class HiddenFoldersAccessPlugin extends Plugin {
 
         for (const path of desired) {
             if (!current.has(path) && !this.indexer.isBusy(path)) {
-                this.startEnableTask(path)
+                void this.startEnableTask(path)
             }
         }
         for (const path of current) {
@@ -130,11 +130,18 @@ export class HiddenFoldersAccessPlugin extends Plugin {
     private runBackgroundRebuild(target: readonly string[]): void {
         for (const path of target) {
             if (this.indexer.isBusy(path)) continue
-            this.startRebuildTask(path)
+            void this.startRebuildTask(path)
         }
     }
 
-    private startRebuildTask(path: string): void {
+    private async startRebuildTask(path: string): Promise<void> {
+        // Skip silently if the folder is no longer on disk — the config entry
+        // is preserved and will be indexed again next time it reappears.
+        if (!(await this.indexer.pathExistsOnDisk(path))) {
+            log(`Skipping rebuild for missing folder "${path}"`, 'debug')
+            return
+        }
+
         const notice = new Notice(`Rebuilding index for ${path}…`, 0)
         const tick = window.setInterval(() => {
             const count = this.countLoaded(path)
@@ -160,7 +167,15 @@ export class HiddenFoldersAccessPlugin extends Plugin {
             })
     }
 
-    private startEnableTask(path: string): void {
+    private async startEnableTask(path: string): Promise<void> {
+        // Skip silently if the configured folder is missing on disk. No notice,
+        // no error — the config stays as-is and will be picked up on the next
+        // sync (restart, toggle, rescan command) when the folder reappears.
+        if (!(await this.indexer.pathExistsOnDisk(path))) {
+            log(`Skipping indexing for missing folder "${path}"`, 'debug')
+            return
+        }
+
         const notice = new Notice(`Indexing ${path}…`, 0)
         const tick = window.setInterval(() => {
             const count = this.countLoaded(path)
