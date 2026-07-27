@@ -1,6 +1,6 @@
 {
     "name": "hidden-folders-access",
-    "version": "1.0.4",
+    "version": "1.1.0",
     "description": "Index hidden root-level folders (e.g. .claude) so they appear in the file tree, metadata cache, and Bases.",
     "author": {
         "name": "Sébastien Dubois",

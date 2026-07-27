@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.0.4...1.1.0) (2026-07-27)
+
+### Features
+
+* **plugin:** show a what's new dialog once after plugin updates ([f775b01](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/f775b01f40047cbb51aaf53bc2dbbb3f53d411e0))
+
 ## [1.0.4](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.0.3...1.0.4) (2026-07-17)
 
 ## [1.0.3](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.0.2...1.0.3) (2026-05-14)
@@ -28,6 +34,7 @@ All notable changes to this project will be documented in this file.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
 
 
