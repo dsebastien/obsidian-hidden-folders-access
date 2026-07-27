@@ -1,3 +1,4 @@
+import { registerWhatsNewDialog } from './whats-new'
 import { Notice, Plugin } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
@@ -16,6 +17,8 @@ export class HiddenFoldersAccessPlugin extends Plugin {
     indexer: HiddenFoldersIndexer = new HiddenFoldersIndexer(this.app)
 
     override async onload(): Promise<void> {
+        // Must run before anything can call saveData (fresh-install detection)
+        registerWhatsNewDialog(this)
         log('Initializing Hidden Folders Access', 'debug')
         await this.loadSettings()
 
