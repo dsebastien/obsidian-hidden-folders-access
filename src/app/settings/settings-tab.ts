@@ -4,6 +4,7 @@ import { DEFAULT_ALLOWED_EXTENSIONS } from '../types/plugin-settings.intf'
 import { parseExtensions } from '../../utils/extensions'
 import { log } from '../../utils/log'
 import { BUY_ME_A_COFFEE_BADGE_DATA_URL } from '../assets/buy-me-a-coffee'
+import { renderSupportSection } from '../ui/support-links'
 
 export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     plugin: HiddenFoldersAccessPlugin
@@ -168,18 +169,9 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     }
 
     private renderSupportHeader(containerEl: HTMLElement): void {
-        new Setting(containerEl).setName('Support').setHeading()
-
-        const supportDesc = new DocumentFragment()
-        supportDesc.createDiv({
-            text: 'Buy me a coffee to support the development of this plugin ❤️'
+        renderSupportSection(containerEl, (el) => {
+            this.renderBuyMeACoffeeBadge(el)
         })
-
-        new Setting(containerEl).setDesc(supportDesc)
-
-        this.renderBuyMeACoffeeBadge(containerEl)
-        const spacing = containerEl.createDiv()
-        spacing.classList.add('support-header-margin')
     }
 
     private renderBuyMeACoffeeBadge(contentEl: HTMLElement | DocumentFragment, width = 175): void {
