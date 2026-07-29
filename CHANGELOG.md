@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.1.0...1.2.0) (2026-07-29)
+
+### Features
+
+* **plugin:** add Knowii community to the what's new dialog and harden it ([3c3362b](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/3c3362be42dfcc5b07ef80a5d343ffef33d7059c))
+
 ## [1.1.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.0.4...1.1.0) (2026-07-27)
 
 ### Features
@@ -34,6 +40,7 @@ All notable changes to this project will be documented in this file.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
 
 
