@@ -71,6 +71,32 @@ export class HiddenFoldersAccessPlugin extends Plugin {
         await this.saveData(this.settings)
     }
 
+    /** Serializes settings writes; see updateSettings. */
+    private settingsWriteChain: Promise<void> = Promise.resolve()
+
+    /**
+     * Apply a mutation to the settings (via immer) and persist the result.
+     * The single write path — the settings tab and the domain methods below
+     * route every edit through here so persistence happens in exactly one
+     * place.
+     */
+    updateSettings(mutator: (draft: Draft<PluginSettings>) => void): Promise<void> {
+        // Persist-then-commit: swap memory only after saveData() succeeds, so
+        // a rejected write rolls the control back to the on-disk truth.
+        // Serialized: writes queue and each mutation derives from the
+        // previous COMMITTED state — without this, overlapping calls produce
+        // from the same base across the save await and the second commit
+        // silently drops the first edit.
+        const run = async (): Promise<void> => {
+            const next = produce(this.settings, mutator)
+            await this.saveData(next)
+            this.settings = next
+        }
+        const p = this.settingsWriteChain.then(run, run)
+        this.settingsWriteChain = p.catch(() => {})
+        return p
+    }
+
     /**
      * Replace the allowed-extension list and re-apply it to every currently
      * enabled folder. Returns once the new list is persisted — the rebuild of
@@ -83,10 +109,11 @@ export class HiddenFoldersAccessPlugin extends Plugin {
             )
         ).sort()
 
-        this.settings = produce(this.settings, (draft: Draft<PluginSettings>) => {
+        await this.updateSettings((draft) => {
             draft.allowedExtensions = normalized
         })
-        await this.saveSettings()
+        // Side effects only after the write landed: a failed persist must not
+        // rebuild the index against a filter that was never stored.
         this.indexer.setAllowedExtensions(normalized)
         this.runBackgroundRebuild(this.settings.enabledFolders)
     }
@@ -98,10 +125,10 @@ export class HiddenFoldersAccessPlugin extends Plugin {
      */
     async updateEnabledFolders(folders: readonly string[]): Promise<void> {
         const deduped = Array.from(new Set(folders)).sort()
-        this.settings = produce(this.settings, (draft: Draft<PluginSettings>) => {
+        await this.updateSettings((draft) => {
             draft.enabledFolders = deduped
         })
-        await this.saveSettings()
+        // Side effect only after the write landed — see updateSettings.
         this.runBackgroundSync(deduped)
     }
 

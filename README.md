@@ -18,6 +18,12 @@ This plugin solves the problem without touching the filesystem: you pick which h
 
 ## Installation
 
+> **Requires Obsidian 1.13.0 or later.** The settings pane uses the declarative
+> settings API introduced in 1.13. On an older version the plugin will not load,
+> and the community catalog will not offer it to you — but a manual or BRAT
+> install can still put an incompatible build in your vault, so check
+> **Settings → About** first.
+
 ### Community plugins (recommended)
 
 1. In Obsidian, go to **Settings → Community plugins**.

@@ -427,6 +427,79 @@ const button = container.createEl('button', {
 }
 ```
 
+### Declarative settings (Obsidian 1.13+) — mandatory approach and traps
+
+This plugin declares its settings via `getSettingDefinitions()` (see
+`src/app/settings/settings-tab.ts`). Keep that approach. Every rule below cost
+a shipped bug the first time it was broken; `settings-guard.spec.ts` enforces
+the two statically-catchable ones, and `settings-write.spec.ts` covers the
+write-path behavior.
+
+Repo-specific shapes, decided deliberately:
+
+- The folder list is discovered ASYNC while `getSettingDefinitions()` is sync:
+  the scan result is cached on the tab, a missing cache renders a scanning row
+  and starts the scan, and `update()` re-renders when it lands. Each folder is
+  a toggle behind a `folder:<name>` control key.
+- Persistence lives in the domain methods (`updateEnabledFolders`,
+  `updateAllowedExtensions`), which route through the serialized
+  `updateSettings` and run their background indexing side effects strictly
+  AFTER the write lands.
+- The extensions editor keeps draft-plus-Save semantics: applying the list
+  triggers a full background rebuild, which must never fire per keystroke.
+- A definition with neither control nor render is SKIPPED by the framework —
+  the info rows carry a no-op `render:` hook on purpose.
+
+- **`getSettingDefinitions()` REPLACES `display()`.** Non-empty array means
+  `display()` is never called. No partial adoption: the whole settings UI is
+  declarative or none of it. Requires `minAppVersion` 1.13.0.
+- **A `render:` hook renders the ROW.** Write into `setting.settingEl` only
+  (drop `setting.infoEl` when the helper draws its own name/desc). Anything
+  written outside the row — `group.listEl`, siblings — is the framework's to
+  discard: the control is silently absent at runtime. Never call
+  `settingEl.remove()`. Staying inside the row also means the framework tears
+  the widget down on re-render, so re-renders cannot stack duplicates.
+- **`defaultValue` is the fallback for a RESOLVER returning undefined/null —
+  not for a cleared input.** On numeric controls it turns a cleared field into
+  a silent reset to the schema default. Declare none; let a bounds `validate`
+  refuse the cleared value inline.
+- **A row `action:` fires on the WHOLE row, not on a button.** Destructive
+  rows need their own confirmation modal.
+  It also draws NO button, so a link row that used to have a CTA silently loses
+  it in the port — use a `render:` hook with `addButton` to keep one.
+- **A `render:` hook draws into `.setting-item`, which is a flex ROW.** Anything
+  that is a vertical stack of full-width rows (the shared support block is the
+  canonical case) needs the row put back into block flow, or its heading,
+  buttons and badge lay out side by side. `settings-stack` does that.
+- **`onDelete` decorates only plain list rows — `type: 'page'` entries get NO
+  delete button.** A list of sub-pages silently loses its delete affordance;
+  give each page an explicit "Remove" row (a warning-styled button in its own
+  row, deleting by stable id). Caught in the first fleet port's vault review.
+- **`onDelete(index)` indexes the LIVE list.** The framework re-indexes on
+  drag immediately, while a settings refresh waits on persistence. Resolve the
+  entity from the live index, never from a render-time snapshot.
+- **Persist before committing to memory — AND serialize the writes.**
+  `updateSettings` must write to disk first and swap the in-memory settings
+  only on success — a rejection rolls the control back to `getControlValue`'s
+  answer, which must be the on-disk truth. And writes must queue: two
+  overlapping calls that both `produce()` from the same base across the save
+  await make the second commit silently drop the first edit. Chain them so
+  each mutation derives from the previous committed state (see
+  `src/app/plugin.ts`).
+- **`setControlValue` MUST reject on failure.** Resolving tells the framework
+  the write landed, so the pane keeps showing a value that was never stored.
+  Rejecting rolls the control back to `getControlValue`'s answer.
+- **A nullable object cannot be a dot-path control key.** The path walks to
+  `null`, the write is refused, and the choice silently does not persist.
+- **Free wins:** `SettingDefinitionList` provides drag-to-reorder, delete and
+  add natively — delete hand-rolled arrow buttons, do not port them. Declared
+  `name`/`desc` are indexed by Obsidian's settings search.
+- **Acceptance is a live vault check.** Nothing in CI renders a settings pane.
+  Five broken controls once shipped through 2806 passing tests, clean types,
+  `--max-warnings 0` and two adversarial reviews. For ANY settings change,
+  open the settings pane in a real vault before calling it done — flag it for
+  manual verification per the "No UI self-verification" rule.
+
 ## Community catalog review — preventative rules
 
 The community-plugin reviewer runs a fixed set of lint rules against every submitted release. Most warnings repeat across plugins and have known idiomatic fixes. **Apply these patterns from day one** — fixing them retroactively is much more expensive than getting them right the first time.
