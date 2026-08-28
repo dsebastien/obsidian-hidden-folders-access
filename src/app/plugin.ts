@@ -133,6 +133,30 @@ export class HiddenFoldersAccessPlugin extends Plugin {
     }
 
     /**
+     * Enable or disable a single folder. The new list is derived INSIDE the
+     * mutator, against the previously COMMITTED state: computing it at the
+     * call site would capture a pre-commit snapshot, and two quick toggles on
+     * different folders would each build on the same base — the second
+     * silently dropping the first (the old optimistic tab was immune because
+     * it committed synchronously).
+     */
+    async setFolderEnabled(folder: string, enabled: boolean): Promise<void> {
+        let deduped: readonly string[] = []
+        await this.updateSettings((draft) => {
+            const current = new Set(draft.enabledFolders)
+            if (enabled) {
+                current.add(folder)
+            } else {
+                current.delete(folder)
+            }
+            deduped = Array.from(current).sort()
+            draft.enabledFolders = [...deduped]
+        })
+        // Side effect only after the write landed — see updateSettings.
+        this.runBackgroundSync(deduped)
+    }
+
+    /**
      * Diff the current indexer state against `target` and spawn one background
      * task per folder that needs to be enabled or disabled.
      */

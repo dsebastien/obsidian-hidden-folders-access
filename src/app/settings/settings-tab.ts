@@ -37,7 +37,23 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     /** Cached folder scan; null = not scanned yet (or refresh requested). */
     private hiddenFolders: string[] | null = null
     private folderScanFailed = false
-    private folderScanRunning = false
+    /**
+     * Invalidation counter for the scan. Refresh (and reopening the pane)
+     * bumps it; a scan only commits its result if the generation it started
+     * under is still current, so a stale in-flight scan can neither block a
+     * requested rescan nor repopulate the cache with old data.
+     */
+    private scanGeneration = 0
+    private runningScanGeneration: number | null = null
+
+    /**
+     * The extensions editor's draft; null mirrors the committed value. Held
+     * on the tab so a mid-edit re-render (async scan landing, Refresh) does
+     * not discard it — see fileTypeDefinitions.
+     */
+    private extensionsDraft: string | null = null
+    /** One extensions apply at a time, surviving re-renders. */
+    private extensionsApplyInFlight = false
 
     constructor(app: App, plugin: HiddenFoldersAccessPlugin) {
         super(app, plugin)
@@ -67,8 +83,7 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                                     .setButtonText('Refresh')
                                     .setCta()
                                     .onClick(() => {
-                                        this.hiddenFolders = null
-                                        this.folderScanFailed = false
+                                        this.invalidateFolderScan()
                                         this.update()
                                         new Notice('Hidden folder list refreshed')
                                     })
@@ -151,25 +166,50 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
         }))
     }
 
-    /** Starts the async folder scan once; `update()` re-renders when it lands. */
+    /** Starts the async folder scan once per generation; `update()` re-renders when it lands. */
     private ensureFolderScan(): void {
-        if (this.folderScanRunning) {
+        if (this.runningScanGeneration === this.scanGeneration) {
             return
         }
-        this.folderScanRunning = true
+        const generation = this.scanGeneration
+        this.runningScanGeneration = generation
         void this.plugin.indexer
             .listHiddenRootFolders()
             .then((folders) => {
-                this.hiddenFolders = folders
+                if (this.scanGeneration === generation) {
+                    this.hiddenFolders = folders
+                }
             })
             .catch((err: unknown) => {
                 log('Failed to list hidden folders', 'error', err)
-                this.folderScanFailed = true
+                if (this.scanGeneration === generation) {
+                    this.folderScanFailed = true
+                }
             })
             .finally(() => {
-                this.folderScanRunning = false
+                if (this.runningScanGeneration === generation) {
+                    this.runningScanGeneration = null
+                }
                 this.update()
             })
+    }
+
+    /** Invalidate the cached scan so the next render starts a fresh one. */
+    private invalidateFolderScan(): void {
+        this.scanGeneration += 1
+        this.hiddenFolders = null
+        this.folderScanFailed = false
+    }
+
+    /**
+     * The pane rescans on every opening, exactly as the old `display()` did:
+     * `hide()` fires when the settings pane closes, so the next open starts
+     * from a fresh scan instead of a cache that may predate new folders or a
+     * transient startup failure.
+     */
+    override hide(): void {
+        this.invalidateFolderScan()
+        super.hide()
     }
 
     // ─── File types ────────────────────────────────────────────────────────
@@ -180,9 +220,15 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
      * rebuild, so it must never fire per keystroke.
      */
     private fileTypeDefinitions(): SettingGroupItem[] {
-        let pending = this.plugin.settings.allowedExtensions.join(', ')
+        // Draft state lives on the TAB, not in this closure: the pane
+        // re-renders whenever the async folder scan lands (or Refresh runs),
+        // and closure-held state would silently discard an in-progress edit
+        // and reset the in-flight guard mid-Save. The old pane only lost the
+        // draft on an explicit re-render; this preserves it across all of
+        // them. `null` means "mirror the committed value".
+        const pending = (): string =>
+            this.extensionsDraft ?? this.plugin.settings.allowedExtensions.join(', ')
         let saveButton: ButtonComponent | null = null
-        let applyInFlight = false
 
         // A change is "effective" only when the parsed extension list differs
         // from what's currently persisted — whitespace, casing, duplicates and
@@ -195,7 +241,7 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
         }
 
         const refreshDirty = (): void => {
-            saveButton?.setDisabled(applyInFlight || !isDirty(pending))
+            saveButton?.setDisabled(this.extensionsApplyInFlight || !isDirty(pending()))
         }
 
         return [
@@ -212,9 +258,9 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                     setting.addTextArea((textArea) => {
                         textArea
                             .setPlaceholder('md, canvas, base, …')
-                            .setValue(pending)
+                            .setValue(pending())
                             .onChange((value) => {
-                                pending = value
+                                this.extensionsDraft = value
                                 refreshDirty()
                             })
                         textArea.inputEl.rows = 3
@@ -232,15 +278,17 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                         button
                             .setButtonText('Save')
                             .setCta()
-                            .setDisabled(true)
+                            .setDisabled(this.extensionsApplyInFlight || !isDirty(pending()))
                             .onClick(() => {
-                                if (applyInFlight || !isDirty(pending)) return
-                                applyInFlight = true
+                                if (this.extensionsApplyInFlight || !isDirty(pending())) return
+                                this.extensionsApplyInFlight = true
                                 refreshDirty()
-                                const extensions = parseExtensions(pending)
+                                const extensions = parseExtensions(pending())
                                 void this.plugin
                                     .updateAllowedExtensions(extensions)
                                     .then(() => {
+                                        // The draft is committed; mirror the store again.
+                                        this.extensionsDraft = null
                                         new Notice(
                                             'Rebuilding enabled folders with the new file-type filter…'
                                         )
@@ -249,18 +297,19 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                                         new Notice('Failed to save settings.')
                                     })
                                     .finally(() => {
-                                        applyInFlight = false
+                                        this.extensionsApplyInFlight = false
                                         refreshDirty()
                                     })
                             })
                     })
                     setting.addButton((button) =>
                         button.setButtonText('Reset to defaults').onClick(() => {
-                            if (applyInFlight) return
-                            applyInFlight = true
+                            if (this.extensionsApplyInFlight) return
+                            this.extensionsApplyInFlight = true
                             void this.plugin
                                 .updateAllowedExtensions([...DEFAULT_ALLOWED_EXTENSIONS])
                                 .then(() => {
+                                    this.extensionsDraft = null
                                     new Notice('Allowed extensions reset to defaults. Rebuilding…')
                                     this.update()
                                 })
@@ -268,7 +317,7 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                                     new Notice('Failed to save settings.')
                                 })
                                 .finally(() => {
-                                    applyInFlight = false
+                                    this.extensionsApplyInFlight = false
                                 })
                         })
                     )
@@ -305,15 +354,10 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
             if (typeof value !== 'boolean') {
                 throw new Error(`Setting "${key}" expects a boolean.`)
             }
-            // Compute from the latest persisted state, not from a snapshot
-            // taken when the pane was rendered.
-            const current = new Set(this.plugin.settings.enabledFolders)
-            if (value) {
-                current.add(folder)
-            } else {
-                current.delete(folder)
-            }
-            await this.plugin.updateEnabledFolders([...current])
+            // The new list is derived inside the domain method's mutator,
+            // against the committed state — never from a snapshot taken here,
+            // which a queued write would turn stale.
+            await this.plugin.setFolderEnabled(folder, value)
             return
         }
         new Notice('Failed to save settings.')

@@ -78,7 +78,7 @@ See [`DEVELOPMENT.md`](./DEVELOPMENT.md) for the full workflow.
 
 ## Compatibility
 
-- Obsidian 1.4+
+- Obsidian 1.13.0+ (declarative settings API)
 - Desktop only (`isDesktopOnly: true`). Mobile Obsidian does not expose the filesystem primitives this plugin relies on.
 
 ## License

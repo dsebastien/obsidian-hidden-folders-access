@@ -49,4 +49,4 @@ An entry in `enabledFolders` that no longer matches a folder on disk is kept as-
 ## Compatibility
 
 - Desktop only (the plugin manifest sets `isDesktopOnly: true`). Mobile Obsidian does not expose the filesystem primitives this plugin relies on.
-- Tested with Obsidian 1.4+ on Linux, macOS, and Windows.
+- Requires Obsidian 1.13.0+; tested on Linux, macOS, and Windows.

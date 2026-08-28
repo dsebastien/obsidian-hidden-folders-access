@@ -66,6 +66,13 @@ while [ $# -gt 0 ]; do
             ;;
         --version=*)
             VERSION="${1#*=}"
+            # An empty value must fail loudly, exactly like `--version ""`:
+            # in CI, an unset variable expanding to --version= would otherwise
+            # silently fall back to the calculated version.
+            if [ -z "$VERSION" ]; then
+                print_error "Error: --version needs a value (e.g. --version=2.0.0)"
+                exit 1
+            fi
             shift
             ;;
         --yes|-y)

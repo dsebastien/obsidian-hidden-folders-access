@@ -198,6 +198,31 @@ describe('setControlValue', () => {
         expect(tab.getControlValue('folder:.claude')).toBe(false)
     })
 
+    test('two rapid toggles on different folders both survive', async () => {
+        // The regression the adversarial review flagged as High: computing
+        // the new list at the call site captures a pre-commit snapshot, and
+        // the second write silently drops the first folder. The delta is
+        // derived INSIDE the mutator instead.
+        let releaseFirst = (): void => {}
+        const first = new Promise<void>((resolve) => {
+            releaseFirst = resolve
+        })
+        let call = 0
+        const { tab, plugin } = createHarness({
+            saveData: () => {
+                call += 1
+                return call === 1 ? first : Promise.resolve()
+            }
+        })
+
+        const a = tab.setControlValue('folder:.claude', true)
+        const b = tab.setControlValue('folder:.github', true)
+        releaseFirst()
+        await Promise.all([a, b])
+
+        expect(plugin.settings.enabledFolders).toEqual(['.claude', '.github'])
+    })
+
     test('rejects a wrongly typed toggle value and an unknown key without writing', async () => {
         const { tab, saveData } = createHarness()
 
