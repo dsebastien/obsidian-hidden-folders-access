@@ -232,7 +232,10 @@ git push origin "$CURRENT_BRANCH"
 
 # Trigger GitHub workflow
 print_step "Triggering release workflow on GitHub..."
-gh workflow run release.yml -f version="$VERSION"
+# Dispatch at the branch we just pushed: without --ref, gh runs the workflow
+# from the remote default branch, which can release different code than the
+# branch this script validated and pushed.
+gh workflow run release.yml --ref "$CURRENT_BRANCH" -f version="$VERSION"
 
 echo ""
 print_info "✓ Release workflow triggered successfully!"
