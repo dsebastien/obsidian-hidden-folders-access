@@ -1,6 +1,10 @@
 {
     "compilerOptions": {
         "baseUrl": ".",
+        // Fail the build loudly (TS2688) if either @types package goes missing —
+        // without this, a vanished @types/node silently types every node:* import
+        // as `error`, which only the community catalog reviewer's ruleset sees.
+        "types": ["bun", "node"],
         "lib": ["DOM", "ESNext"],
         "target": "ESNext",
         "module": "ESNext",

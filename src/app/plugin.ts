@@ -13,7 +13,7 @@ const COMPLETION_NOTICE_MS = 4000
 const ERROR_NOTICE_MS = 8000
 
 export class HiddenFoldersAccessPlugin extends Plugin {
-    settings: PluginSettings = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
+    override settings: PluginSettings = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
     indexer: HiddenFoldersIndexer = new HiddenFoldersIndexer(this.app)
 
     override async onload(): Promise<void> {
