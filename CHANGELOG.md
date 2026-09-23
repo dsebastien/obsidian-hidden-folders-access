@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/2.0.0...2.1.0) (2026-09-23)
+
+### Features
+
+* **build:** fail the build on a lockfile the catalog review cannot parse ([38d3e5c](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/38d3e5c7e2db828b0d925c5a6992e7d4f9c36f1e))
+* **build:** make the rule floor check that it is still wired in ([89d157c](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/89d157cc0802f7e0e2edddca0925f88b0ca19fd4))
+* **build:** refuse commits that loosen the rules instead of fixing the finding ([11f2797](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/11f2797740156c6b2927253a4eb8925200630264))
+
+### Bug Fixes
+
+* **build:** exclude bun-types alongside @types/bun from the release-age gate ([00443f9](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/00443f96962314a48723ae78d967f49a27060ba2))
+* **build:** harden the release path from the template ([5555712](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/5555712a593a3670a1fe4dfa771fd7b1fdc403e8))
+* **build:** rebuild versions.json from the published releases ([c694ab0](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/c694ab045a4b294be9c4a111fb16faaee17e571c))
+* **deps:** move the fast-uri override off the vulnerable line ([59c6c8e](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/59c6c8e70d27bf6af26540e307b7f96f4695fd4f))
+
 ## [2.0.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/1.3.0...2.0.0) (2026-08-29)
 
 ### ⚠ BREAKING CHANGES
@@ -90,6 +105,7 @@ uses the declarative settings API introduced in Obsidian 1.13.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
 
 
