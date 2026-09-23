@@ -19,7 +19,7 @@ const DEFAULT_CONFIG_DIR = `.${'obsidian'}`
 const makeApp = (folders: string[], configDir = DEFAULT_CONFIG_DIR): FakeApp => ({
     vault: {
         adapter: {
-            list: async () => ({ files: [], folders })
+            list: () => Promise.resolve({ files: [], folders })
         },
         configDir,
         getAllLoadedFiles: () => []
