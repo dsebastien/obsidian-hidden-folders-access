@@ -244,17 +244,17 @@ describe('loadSettings', () => {
     test('never freezes the shared defaults', async () => {
         const { plugin } = createHarness()
         const internals = plugin as unknown as Record<string, unknown>
-        internals['loadData'] = (): Promise<unknown> =>
-            Promise.resolve({ enabledFolders: ['.claude'] })
+        // No stored folders: the produced settings then share enabledFolders
+        // with the base, which is how producing from the constant froze it.
+        internals['loadData'] = (): Promise<unknown> => Promise.resolve(null)
 
         await plugin.loadSettings()
 
         // Immer deep-freezes what produce returns, including subtrees shared
         // with its base: producing from DEFAULT_SETTINGS froze the constant
         // for the rest of the process.
-        expect(plugin.settings.enabledFolders).toEqual(['.claude'])
+        expect(plugin.settings.enabledFolders).toEqual([])
         expect(Object.isFrozen(plugin.settings)).toBe(true)
-        expect(Object.isFrozen(DEFAULT_SETTINGS)).toBe(false)
-        expect(Object.isFrozen(DEFAULT_SETTINGS.allowedExtensions)).toBe(false)
+        expect(Object.isFrozen(DEFAULT_SETTINGS.enabledFolders)).toBe(false)
     })
 })

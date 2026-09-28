@@ -58,5 +58,6 @@ describe('DEFAULT_SETTINGS', () => {
         expect(two.allowedExtensions).not.toContain('__test__')
         expect(two.enabledFolders).toEqual([])
         expect(DEFAULT_SETTINGS.enabledFolders).toEqual([])
+        expect(DEFAULT_SETTINGS.allowedExtensions).not.toBe(DEFAULT_ALLOWED_EXTENSIONS)
     })
 })
