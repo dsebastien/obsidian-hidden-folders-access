@@ -460,8 +460,24 @@ Repo-specific shapes, decided deliberately:
   (drop `setting.infoEl` when the helper draws its own name/desc). Anything
   written outside the row — `group.listEl`, siblings — is the framework's to
   discard: the control is silently absent at runtime. Never call
-  `settingEl.remove()`. Staying inside the row also means the framework tears
-  the widget down on re-render, so re-renders cannot stack duplicates.
+  `settingEl.remove()`.
+- **`update()` re-runs a `render:` hook on the SAME row and resets only its
+  control area (`controlEl`).** Controls added with `addButton`/`addText` are
+  cleared, but anything the hook appends elsewhere in the row (a support
+  block, help text, a status line) stays and is appended again: every refresh
+  stacks another copy. Render such content into a wrapper and return a
+  cleanup that removes it: create `el` with `setting.settingEl.createDiv()`,
+  draw into it, and `return () => el.remove()`. Obsidian calls the cleanup
+  before re-running the hook. Verified in Obsidian 1.13.7, where fleet
+  plugins using this template's Support row went from 1 to 3 copies after
+  two `update()` calls; a stacked editor also kept its stale copy on top,
+  whose Save wrote an outdated list.
+- **The definitions are built only in `update()` and reused on every
+  opening.** Anything a definition captures from outside the settings (another
+  plugin's state, e.g. which Starter Kit note types exist) is frozen at the
+  last `update()`, and plugin `onload` is early: other plugins may not be
+  loaded yet. Read such state in a `render:` hook or a `visible:` predicate,
+  which run on every render.
 - **`defaultValue` is the fallback for a RESOLVER returning undefined/null —
   not for a cleared input.** On numeric controls it turns a cleared field into
   a silent reset to the schema default. Declare none; let a bounds `validate`

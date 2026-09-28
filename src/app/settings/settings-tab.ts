@@ -106,15 +106,20 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                         name: 'Support',
                         // Not a setting — keep it out of the settings search.
                         searchable: false,
-                        render: (setting): void => {
+                        render: (setting): (() => void) => {
                             setting.infoEl.remove() // the section draws its own headings
                             // `.setting-item` is a flex ROW. The support block
                             // is a stack of full-width rows, so without this it
                             // would lay heading, buttons and badge side by side.
                             setting.settingEl.addClass('hf-settings-embed')
-                            renderSupportSection(setting.settingEl, (el) => {
+                            // In a wrapper removed by the returned cleanup: update() re-runs
+                            // this hook on the SAME row and only resets its control area, so
+                            // content appended straight to settingEl would pile up.
+                            const blockEl = setting.settingEl.createDiv()
+                            renderSupportSection(blockEl, (el) => {
                                 this.renderBuyMeACoffeeBadge(el)
                             })
+                            return () => blockEl.remove()
                         }
                     }
                 ]
