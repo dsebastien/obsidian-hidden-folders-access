@@ -705,6 +705,11 @@ export default class MyPlugin extends Plugin {
 }
 ```
 
+(Flat settings only: nested defaults going through Immer start from
+`createDefaultSettings()`. `produce()` deep-freezes what it shares with its
+base, so producing from the shared `DEFAULT_SETTINGS` freezes it for the rest
+of the process.)
+
 **settings.ts**:
 
 ```ts
