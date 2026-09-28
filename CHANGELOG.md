@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/2.1.0...2.1.1) (2026-09-28)
+
+### Bug Fixes
+
+* **plugin:** keep the support block from stacking on every settings refresh ([220a331](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/220a331f221a6855019bf2021b09d9c497b4f6af))
+
 ## [2.1.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/2.0.0...2.1.0) (2026-09-23)
 
 ### Features
@@ -105,6 +111,7 @@ uses the declarative settings API introduced in Obsidian 1.13.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
 
 
