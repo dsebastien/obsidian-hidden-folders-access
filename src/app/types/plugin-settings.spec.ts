@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { DEFAULT_ALLOWED_EXTENSIONS, DEFAULT_SETTINGS } from './plugin-settings.intf'
+import {
+    DEFAULT_ALLOWED_EXTENSIONS,
+    DEFAULT_SETTINGS,
+    createDefaultSettings
+} from './plugin-settings.intf'
 
 describe('DEFAULT_ALLOWED_EXTENSIONS', () => {
     test('covers Obsidian-native formats', () => {
@@ -38,16 +42,21 @@ describe('DEFAULT_SETTINGS', () => {
     })
 
     test('starts with every default extension allowed', () => {
-        expect(DEFAULT_SETTINGS.allowedExtensions.sort()).toEqual(
+        expect([...DEFAULT_SETTINGS.allowedExtensions].sort()).toEqual(
             [...DEFAULT_ALLOWED_EXTENSIONS].sort()
         )
     })
 
-    test('allowedExtensions is an independent copy (not aliased to DEFAULT_ALLOWED_EXTENSIONS)', () => {
-        // Mutating the default settings array must never mutate the shared constant.
+    test('each default settings object is an independent copy', () => {
+        // Mutating one must never reach the shared constants or another copy.
         const originalLength = DEFAULT_ALLOWED_EXTENSIONS.length
-        DEFAULT_SETTINGS.allowedExtensions.push('__test__')
+        const one = createDefaultSettings()
+        const two = createDefaultSettings()
+        one.allowedExtensions.push('__test__')
+        one.enabledFolders.push('.claude')
         expect(DEFAULT_ALLOWED_EXTENSIONS.length).toBe(originalLength)
-        DEFAULT_SETTINGS.allowedExtensions.pop()
+        expect(two.allowedExtensions).not.toContain('__test__')
+        expect(two.enabledFolders).toEqual([])
+        expect(DEFAULT_SETTINGS.enabledFolders).toEqual([])
     })
 })

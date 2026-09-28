@@ -2,7 +2,7 @@ import { registerWhatsNewView } from './whats-new'
 import { Notice, Plugin } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
-import { DEFAULT_ALLOWED_EXTENSIONS, DEFAULT_SETTINGS } from './types/plugin-settings.intf'
+import { DEFAULT_ALLOWED_EXTENSIONS, createDefaultSettings } from './types/plugin-settings.intf'
 import type { PluginSettings } from './types/plugin-settings.intf'
 import { HiddenFoldersAccessSettingsTab } from './settings/settings-tab'
 import { HiddenFoldersIndexer } from './services/hidden-folders-indexer'
@@ -13,7 +13,7 @@ const COMPLETION_NOTICE_MS = 4000
 const ERROR_NOTICE_MS = 8000
 
 export class HiddenFoldersAccessPlugin extends Plugin {
-    override settings: PluginSettings = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
+    override settings: PluginSettings = produce(createDefaultSettings(), () => {})
     indexer: HiddenFoldersIndexer = new HiddenFoldersIndexer(this.app)
 
     override async onload(): Promise<void> {
@@ -47,7 +47,7 @@ export class HiddenFoldersAccessPlugin extends Plugin {
     async loadSettings(): Promise<void> {
         const loaded = (await this.loadData()) as Partial<PluginSettings> | null
 
-        this.settings = produce(DEFAULT_SETTINGS, (draft: Draft<PluginSettings>) => {
+        this.settings = produce(createDefaultSettings(), (draft: Draft<PluginSettings>) => {
             if (loaded && Array.isArray(loaded.enabledFolders)) {
                 draft.enabledFolders = loaded.enabledFolders.filter(
                     (entry): entry is string => typeof entry === 'string'

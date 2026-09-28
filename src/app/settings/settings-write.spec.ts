@@ -1,8 +1,9 @@
 import { describe, expect, test, mock } from 'bun:test'
 import { produce } from 'immer'
+import type { App, PluginManifest } from 'obsidian'
 import { HiddenFoldersAccessPlugin } from '../plugin'
 import { HiddenFoldersAccessSettingsTab } from './settings-tab'
-import { DEFAULT_SETTINGS } from '../types/plugin-settings.intf'
+import { DEFAULT_SETTINGS, createDefaultSettings } from '../types/plugin-settings.intf'
 
 /**
  * Behavioral coverage for the settings write path.
@@ -44,7 +45,7 @@ function createHarness(options?: { saveData?: () => Promise<void> }): Harness {
 
     const plugin = Object.create(HiddenFoldersAccessPlugin.prototype) as HiddenFoldersAccessPlugin
     const internals = plugin as unknown as Record<string, unknown>
-    internals['settings'] = produce(DEFAULT_SETTINGS, () => DEFAULT_SETTINGS)
+    internals['settings'] = produce(createDefaultSettings(), () => {})
     internals['settingsWriteChain'] = Promise.resolve()
     internals['saveData'] = saveData
     internals['runBackgroundSync'] = runBackgroundSync
@@ -229,5 +230,31 @@ describe('setControlValue', () => {
         await expectRejection(tab.setControlValue('folder:.claude', 'yes'), 'boolean')
         await expectRejection(tab.setControlValue('nope', true), 'known field')
         expect(saveData).not.toHaveBeenCalled()
+    })
+})
+
+describe('loadSettings', () => {
+    test('constructing the plugin never freezes the shared defaults', () => {
+        const plugin = new HiddenFoldersAccessPlugin({} as App, {} as PluginManifest)
+        expect(Object.isFrozen(plugin.settings)).toBe(true)
+        expect(Object.isFrozen(DEFAULT_SETTINGS)).toBe(false)
+        expect(Object.isFrozen(DEFAULT_SETTINGS.allowedExtensions)).toBe(false)
+    })
+
+    test('never freezes the shared defaults', async () => {
+        const { plugin } = createHarness()
+        const internals = plugin as unknown as Record<string, unknown>
+        internals['loadData'] = (): Promise<unknown> =>
+            Promise.resolve({ enabledFolders: ['.claude'] })
+
+        await plugin.loadSettings()
+
+        // Immer deep-freezes what produce returns, including subtrees shared
+        // with its base: producing from DEFAULT_SETTINGS froze the constant
+        // for the rest of the process.
+        expect(plugin.settings.enabledFolders).toEqual(['.claude'])
+        expect(Object.isFrozen(plugin.settings)).toBe(true)
+        expect(Object.isFrozen(DEFAULT_SETTINGS)).toBe(false)
+        expect(Object.isFrozen(DEFAULT_SETTINGS.allowedExtensions)).toBe(false)
     })
 })
