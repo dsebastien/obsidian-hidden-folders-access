@@ -57,6 +57,10 @@ If the plugin isn't listed in the community catalog yet (or you want a specific 
 - You want to include `.github/`, `.obsidian-templates/`, or other hidden folders in the vault without renaming them.
 - You already manage dotted folders with external tools and don't want Obsidian to rename or duplicate them.
 
+## Sync and other plugins
+
+Obsidian Sync ignores hidden paths, so it never syncs or deletes files in the folders you enable. Third-party sync plugins and plugins that edit files may behave differently. See the [FAQ](./faq.md).
+
 ## About
 
 Created by [Sébastien Dubois](https://dsebastien.net). Support development via [Buy Me a Coffee](https://www.buymeacoffee.com/dsebastien).

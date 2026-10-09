@@ -81,6 +81,14 @@ See [`DEVELOPMENT.md`](./DEVELOPMENT.md) for the full workflow.
 - Obsidian 1.13.0+ (declarative settings API)
 - Desktop only (`isDesktopOnly: true`). Mobile Obsidian does not expose the filesystem primitives this plugin relies on.
 
+### Sync and other plugins
+
+- **Obsidian Sync**: safe. Sync never syncs paths starting with `.`, so files in the folders you enable are never uploaded, and disabling a folder or the plugin can't trigger remote deletions. It also means Sync won't copy those folders to your other devices.
+- **Third-party sync plugins** (Remotely Save, LiveSync, obsidian-git, ...) may not exclude hidden paths. Test on a copy and keep backups.
+- **Other plugins** now see these files like any vault file: link updates, formatters and auto-movers can modify them.
+
+Details in the [FAQ](./docs/faq.md).
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
