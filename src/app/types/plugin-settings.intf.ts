@@ -11,6 +11,13 @@ export interface PluginSettings {
      * only controls which files get injected into Obsidian's vault cache.
      */
     allowedExtensions: string[]
+
+    /**
+     * Folder names skipped inside enabled hidden folders, at any depth: the
+     * folder and everything under it stay out of Obsidian's vault cache. The
+     * enabled root folder itself is never skipped.
+     */
+    excludedFolders: string[]
 }
 
 /**
@@ -44,6 +51,18 @@ export const DEFAULT_ALLOWED_EXTENSIONS: readonly string[] = [
 ]
 
 /**
+ * Default skip list: dependency, VCS and tool caches that appear inside dot
+ * folders (an AI skill installing its packages, a nested repository) and hold
+ * nothing worth indexing.
+ */
+export const DEFAULT_EXCLUDED_FOLDERS: readonly string[] = [
+    'node_modules',
+    '.git',
+    '.venv',
+    '__pycache__'
+]
+
+/**
  * A fresh default settings object, safe to hand to Immer.
  *
  * `produce` deep-freezes what it returns, including any subtree it shares
@@ -55,7 +74,8 @@ export const DEFAULT_ALLOWED_EXTENSIONS: readonly string[] = [
 export function createDefaultSettings(): PluginSettings {
     return {
         enabledFolders: [],
-        allowedExtensions: [...DEFAULT_ALLOWED_EXTENSIONS]
+        allowedExtensions: [...DEFAULT_ALLOWED_EXTENSIONS],
+        excludedFolders: [...DEFAULT_EXCLUDED_FOLDERS]
     }
 }
 

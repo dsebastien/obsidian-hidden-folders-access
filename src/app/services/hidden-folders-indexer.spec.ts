@@ -33,6 +33,19 @@ describe('HiddenFoldersIndexer', () => {
         indexer = new HiddenFoldersIndexer(makeApp([]) as unknown as App)
     })
 
+    describe('excluded folders', () => {
+        test('is empty by default (nothing skipped)', () => {
+            expect(indexer.getExcludedFolders()).toEqual([])
+        })
+
+        test('setExcludedFolders trims, drops empty entries and replaces the list', () => {
+            indexer.setExcludedFolders([' node_modules ', '', '.git'])
+            expect(indexer.getExcludedFolders()).toEqual(['.git', 'node_modules'])
+            indexer.setExcludedFolders(['dist'])
+            expect(indexer.getExcludedFolders()).toEqual(['dist'])
+        })
+    })
+
     describe('extension allowlist', () => {
         test('is empty by default (no filtering)', () => {
             expect(indexer.getAllowedExtensions()).toEqual([])

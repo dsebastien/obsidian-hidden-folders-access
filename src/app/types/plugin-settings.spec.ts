@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
     DEFAULT_ALLOWED_EXTENSIONS,
+    DEFAULT_EXCLUDED_FOLDERS,
     DEFAULT_SETTINGS,
     createDefaultSettings
 } from './plugin-settings.intf'
@@ -45,6 +46,11 @@ describe('DEFAULT_SETTINGS', () => {
         expect([...DEFAULT_SETTINGS.allowedExtensions].sort()).toEqual(
             [...DEFAULT_ALLOWED_EXTENSIONS].sort()
         )
+    })
+
+    test('starts with the default excluded folders', () => {
+        expect(DEFAULT_SETTINGS.excludedFolders).toEqual([...DEFAULT_EXCLUDED_FOLDERS])
+        expect(DEFAULT_EXCLUDED_FOLDERS).toContain('node_modules')
     })
 
     test('each default settings object is an independent copy', () => {

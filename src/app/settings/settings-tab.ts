@@ -1,8 +1,9 @@
 import { Notice, PluginSettingTab } from 'obsidian'
 import type { App, ButtonComponent, SettingDefinitionItem, SettingGroupItem } from 'obsidian'
 import type { HiddenFoldersAccessPlugin } from '../plugin'
-import { DEFAULT_ALLOWED_EXTENSIONS } from '../types/plugin-settings.intf'
+import { DEFAULT_ALLOWED_EXTENSIONS, DEFAULT_EXCLUDED_FOLDERS } from '../types/plugin-settings.intf'
 import { parseExtensions } from '../../utils/extensions'
+import { parseFolderNames } from '../../utils/excluded-folders'
 import { log } from '../../utils/log'
 import { BUY_ME_A_COFFEE_BADGE_DATA_URL } from '../assets/buy-me-a-coffee'
 import { renderSupportSection } from '../ui/support-links'
@@ -55,6 +56,11 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
     /** One extensions apply at a time, surviving re-renders. */
     private extensionsApplyInFlight = false
 
+    /** The excluded folders editor's draft; same semantics as extensionsDraft. */
+    private excludedDraft: string | null = null
+    /** One excluded folders apply at a time, surviving re-renders. */
+    private excludedApplyInFlight = false
+
     constructor(app: App, plugin: HiddenFoldersAccessPlugin) {
         super(app, plugin)
         this.plugin = plugin
@@ -97,6 +103,11 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                 type: 'group',
                 heading: 'File types',
                 items: this.fileTypeDefinitions()
+            },
+            {
+                type: 'group',
+                heading: 'Excluded folders',
+                items: this.excludedFolderDefinitions()
             },
             {
                 type: 'group',
@@ -323,6 +334,111 @@ export class HiddenFoldersAccessSettingsTab extends PluginSettingTab {
                                 })
                                 .finally(() => {
                                     this.extensionsApplyInFlight = false
+                                })
+                        })
+                    )
+                }
+            }
+        ]
+    }
+
+    // ─── Excluded folders ──────────────────────────────────────────────────
+
+    /**
+     * The draft-plus-Save excluded folders editor. Same shape as
+     * fileTypeDefinitions: applying the draft rebuilds every enabled folder,
+     * so it never fires per keystroke.
+     */
+    private excludedFolderDefinitions(): SettingGroupItem[] {
+        const pending = (): string =>
+            this.excludedDraft ?? this.plugin.settings.excludedFolders.join(', ')
+        let saveButton: ButtonComponent | null = null
+
+        // Dirty only when the parsed list differs from the persisted one
+        // (order, spacing, slashes and duplicates don't count).
+        const isDirty = (raw: string): boolean => {
+            const parsed = [...parseFolderNames(raw)].sort().join(',')
+            const current = [...this.plugin.settings.excludedFolders].sort().join(',')
+            return parsed !== current
+        }
+
+        const refreshDirty = (): void => {
+            saveButton?.setDisabled(this.excludedApplyInFlight || !isDirty(pending()))
+        }
+
+        return [
+            {
+                name: '',
+                desc: 'Comma-separated folder names to skip inside enabled hidden folders, at any depth. A folder with one of these names, and everything under it, stays out of Obsidian: use it for dependency, VCS and tool caches such as node_modules or .git. The enabled hidden folder itself is never skipped. Changes are applied when you click Save — this triggers a full rebuild of every enabled folder in the background.',
+                searchable: false,
+                render: (): void => {}
+            },
+            {
+                name: 'Excluded folder names',
+                desc: 'e.g. node_modules, .git, .venv, __pycache__',
+                render: (setting): void => {
+                    setting.addTextArea((textArea) => {
+                        textArea
+                            .setPlaceholder('Folder names, separated by commas')
+                            .setValue(pending())
+                            .onChange((value) => {
+                                this.excludedDraft = value
+                                refreshDirty()
+                            })
+                        textArea.inputEl.rows = 2
+                        textArea.inputEl.classList.add('w-full')
+                    })
+                }
+            },
+            {
+                name: '',
+                searchable: false,
+                render: (setting): void => {
+                    setting.infoEl.remove()
+                    setting.addButton((button) => {
+                        saveButton = button
+                        button
+                            .setButtonText('Save')
+                            .setCta()
+                            .setDisabled(this.excludedApplyInFlight || !isDirty(pending()))
+                            .onClick(() => {
+                                if (this.excludedApplyInFlight || !isDirty(pending())) return
+                                this.excludedApplyInFlight = true
+                                refreshDirty()
+                                const names = parseFolderNames(pending())
+                                void this.plugin
+                                    .updateExcludedFolders(names)
+                                    .then(() => {
+                                        this.excludedDraft = null
+                                        new Notice(
+                                            'Rebuilding enabled folders with the new excluded folders…'
+                                        )
+                                    })
+                                    .catch(() => {
+                                        new Notice('Failed to save settings.')
+                                    })
+                                    .finally(() => {
+                                        this.excludedApplyInFlight = false
+                                        refreshDirty()
+                                    })
+                            })
+                    })
+                    setting.addButton((button) =>
+                        button.setButtonText('Reset to defaults').onClick(() => {
+                            if (this.excludedApplyInFlight) return
+                            this.excludedApplyInFlight = true
+                            void this.plugin
+                                .updateExcludedFolders([...DEFAULT_EXCLUDED_FOLDERS])
+                                .then(() => {
+                                    this.excludedDraft = null
+                                    new Notice('Excluded folders reset to defaults. Rebuilding…')
+                                    this.update()
+                                })
+                                .catch(() => {
+                                    new Notice('Failed to save settings.')
+                                })
+                                .finally(() => {
+                                    this.excludedApplyInFlight = false
                                 })
                         })
                     )

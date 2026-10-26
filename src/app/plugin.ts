@@ -2,7 +2,11 @@ import { registerWhatsNewView } from './whats-new'
 import { Notice, Plugin } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
-import { DEFAULT_ALLOWED_EXTENSIONS, createDefaultSettings } from './types/plugin-settings.intf'
+import {
+    DEFAULT_ALLOWED_EXTENSIONS,
+    DEFAULT_EXCLUDED_FOLDERS,
+    createDefaultSettings
+} from './types/plugin-settings.intf'
 import type { PluginSettings } from './types/plugin-settings.intf'
 import { HiddenFoldersAccessSettingsTab } from './settings/settings-tab'
 import { HiddenFoldersIndexer } from './services/hidden-folders-indexer'
@@ -62,9 +66,19 @@ export class HiddenFoldersAccessPlugin extends Plugin {
                 // Older installs (pre-allowlist) fall back to the defaults.
                 draft.allowedExtensions = [...DEFAULT_ALLOWED_EXTENSIONS]
             }
+            if (loaded && Array.isArray(loaded.excludedFolders)) {
+                draft.excludedFolders = loaded.excludedFolders
+                    .filter((entry): entry is string => typeof entry === 'string')
+                    .map((e) => e.trim())
+                    .filter(Boolean)
+            } else {
+                // Older installs (pre-skip-list) get the defaults.
+                draft.excludedFolders = [...DEFAULT_EXCLUDED_FOLDERS]
+            }
         })
 
         this.indexer.setAllowedExtensions(this.settings.allowedExtensions)
+        this.indexer.setExcludedFolders(this.settings.excludedFolders)
     }
 
     async saveSettings(): Promise<void> {
@@ -115,6 +129,21 @@ export class HiddenFoldersAccessPlugin extends Plugin {
         // Side effects only after the write landed: a failed persist must not
         // rebuild the index against a filter that was never stored.
         this.indexer.setAllowedExtensions(normalized)
+        this.runBackgroundRebuild(this.settings.enabledFolders)
+    }
+
+    /**
+     * Replace the excluded folder names and re-apply them to every currently
+     * enabled folder, like updateAllowedExtensions.
+     */
+    async updateExcludedFolders(names: readonly string[]): Promise<void> {
+        const normalized = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean))).sort()
+
+        await this.updateSettings((draft) => {
+            draft.excludedFolders = normalized
+        })
+        // Side effects only after the write landed (see updateAllowedExtensions).
+        this.indexer.setExcludedFolders(normalized)
         this.runBackgroundRebuild(this.settings.enabledFolders)
     }
 

@@ -31,6 +31,7 @@ interface Harness {
     runBackgroundSync: ReturnType<typeof mock>
     runBackgroundRebuild: ReturnType<typeof mock>
     setAllowedExtensions: ReturnType<typeof mock>
+    setExcludedFolders: ReturnType<typeof mock>
 }
 
 function createHarness(options?: { saveData?: () => Promise<void> }): Harness {
@@ -42,6 +43,7 @@ function createHarness(options?: { saveData?: () => Promise<void> }): Harness {
     const runBackgroundSync = mock(() => {})
     const runBackgroundRebuild = mock(() => {})
     const setAllowedExtensions = mock(() => {})
+    const setExcludedFolders = mock(() => {})
 
     const plugin = Object.create(HiddenFoldersAccessPlugin.prototype) as HiddenFoldersAccessPlugin
     const internals = plugin as unknown as Record<string, unknown>
@@ -50,7 +52,7 @@ function createHarness(options?: { saveData?: () => Promise<void> }): Harness {
     internals['saveData'] = saveData
     internals['runBackgroundSync'] = runBackgroundSync
     internals['runBackgroundRebuild'] = runBackgroundRebuild
-    internals['indexer'] = { setAllowedExtensions }
+    internals['indexer'] = { setAllowedExtensions, setExcludedFolders }
 
     const tab = Object.create(
         HiddenFoldersAccessSettingsTab.prototype
@@ -59,7 +61,15 @@ function createHarness(options?: { saveData?: () => Promise<void> }): Harness {
     tabInternals['plugin'] = plugin
     tabInternals['update'] = () => {}
 
-    return { plugin, tab, saveData, runBackgroundSync, runBackgroundRebuild, setAllowedExtensions }
+    return {
+        plugin,
+        tab,
+        saveData,
+        runBackgroundSync,
+        runBackgroundRebuild,
+        setAllowedExtensions,
+        setExcludedFolders
+    }
 }
 
 describe('updateSettings', () => {
@@ -170,6 +180,28 @@ describe('domain methods', () => {
         expect(plugin.settings.allowedExtensions).toEqual(['canvas', 'md'])
         expect(setAllowedExtensions).toHaveBeenCalledWith(['canvas', 'md'])
         expect(runBackgroundRebuild).toHaveBeenCalledTimes(1)
+    })
+
+    test('updateExcludedFolders normalizes and rebuilds only after the write lands', async () => {
+        const { plugin, runBackgroundRebuild, setExcludedFolders } = createHarness()
+
+        await plugin.updateExcludedFolders([' node_modules', '.git', 'node_modules', ''])
+
+        expect(plugin.settings.excludedFolders).toEqual(['.git', 'node_modules'])
+        expect(setExcludedFolders).toHaveBeenCalledWith(['.git', 'node_modules'])
+        expect(runBackgroundRebuild).toHaveBeenCalledTimes(1)
+    })
+
+    test('a failed excluded folders write leaves the indexer untouched', async () => {
+        const { plugin, runBackgroundRebuild, setExcludedFolders } = createHarness({
+            saveData: () => Promise.reject(new Error('disk full'))
+        })
+
+        await expectRejection(plugin.updateExcludedFolders(['dist']), 'disk full')
+
+        expect(plugin.settings.excludedFolders).toEqual(DEFAULT_SETTINGS.excludedFolders)
+        expect(setExcludedFolders).not.toHaveBeenCalled()
+        expect(runBackgroundRebuild).not.toHaveBeenCalled()
     })
 
     test('a failed extensions write leaves the indexer filter untouched', async () => {

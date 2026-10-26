@@ -1,6 +1,7 @@
 import { type App, type DataAdapter, normalizePath, TAbstractFile } from 'obsidian'
 import { stat } from 'node:fs/promises'
 import { extensionNotAllowed } from '../../utils/extensions'
+import { isInExcludedFolder } from '../../utils/excluded-folders'
 import { log } from '../../utils/log'
 
 type ReconcileFn = (fullPath: string, path: string, silent?: boolean) => Promise<void>
@@ -61,6 +62,7 @@ export class HiddenFoldersIndexer {
     private readonly watchedPrefixes = new Set<string>()
     private readonly inFlight = new Map<string, Promise<void>>()
     private allowedExtensions: Set<string> = new Set()
+    private excludedFolders: Set<string> = new Set()
     private patches: PatchMemo | null = null
 
     constructor(private readonly app: App) {}
@@ -82,6 +84,23 @@ export class HiddenFoldersIndexer {
      */
     getAllowedExtensions(): readonly string[] {
         return Array.from(this.allowedExtensions).sort()
+    }
+
+    /**
+     * Replace the excluded folder names. A path below an enabled root with a
+     * folder of one of these names is never indexed, and its subtree is not
+     * listed. Like the extension allowlist, changes only affect future
+     * operations: rebuild the enabled folders to re-apply.
+     */
+    setExcludedFolders(names: readonly string[]): void {
+        this.excludedFolders = new Set(names.map((n) => n.trim()).filter(Boolean))
+    }
+
+    /**
+     * Read-only view of the excluded folder names, sorted.
+     */
+    getExcludedFolders(): readonly string[] {
+        return Array.from(this.excludedFolders).sort()
     }
 
     /**
@@ -291,6 +310,10 @@ export class HiddenFoldersIndexer {
             if (!isEnabled(normalized)) {
                 return originalListRecursiveChild(parent, name)
             }
+            // An excluded folder is never reconciled, so its subtree is never listed.
+            if (isInExcludedFolder(normalized, this.excludedFolders)) {
+                return
+            }
             if (await this.shouldSkipByExtension(adapter, normalized)) {
                 return
             }
@@ -309,6 +332,10 @@ export class HiddenFoldersIndexer {
         adapter.reconcileFile = async (e: string, t: string, silent?: boolean): Promise<void> => {
             if (!isEnabled(t)) {
                 return originalReconcileFile(e, t, silent)
+            }
+            // Watcher events from inside an excluded folder (a package install) are dropped.
+            if (isInExcludedFolder(t, this.excludedFolders)) {
+                return
             }
             if (await this.shouldSkipByExtension(adapter, t)) {
                 return

@@ -32,6 +32,12 @@ Under the **File types** heading in the settings tab you'll find an **Allowed ex
 
 Folders are always traversed regardless of the allowlist, so nested markdown files remain reachable even if their parent folder sits under sub-folders containing disallowed files.
 
+## Skipping folders inside a hidden folder
+
+Hidden folders often hold tool output nobody wants in Obsidian: an AI skill that installs its packages creates a `node_modules/` full of `README.md` files, and a nested repository brings its `.git/`. Under the **Excluded folders** heading, list the folder names to skip, comma-separated. Defaults: `node_modules, .git, .venv, __pycache__`.
+
+A folder with one of these names, at any depth below an enabled hidden folder, is never indexed: its files stay out of search, the graph and Bases, the plugin doesn't walk into it, and file-system events from inside it (a package install, a `git pull`) are ignored. The enabled hidden folder itself is never skipped, so excluding `.git` doesn't stop you from enabling a root `.git/` folder. **Save** and **Reset to defaults** work like the extensions field and rebuild the enabled folders.
+
 ## What gets indexed
 
 For every enabled folder (and every file type present in the allowlist), Obsidian treats every descendant as normal vault content:
