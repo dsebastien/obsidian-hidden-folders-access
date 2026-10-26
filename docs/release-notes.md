@@ -1,5 +1,17 @@
 # Release Notes
 
+## 2.2.0 (2026-10-26)
+
+### Features
+
+- **all:** skip excluded folders such as node_modules inside hidden folders
+- **build:** ship curated release notes to the What's new tab and the release body
+
+### Bug Fixes
+
+- **build:** keep severity strings out of the options keptAtError copies
+- **plugin:** stop Immer from freezing the shared default settings
+
 ## 2.1.1 (2026-09-28)
 
 ### Bug Fixes

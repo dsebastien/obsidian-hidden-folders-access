@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/2.1.1...2.2.0) (2026-10-26)
+
+### Features
+
+* **all:** skip excluded folders such as node_modules inside hidden folders ([24c4f9d](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/24c4f9df96a0b684e2889239c6db5ec465f4a969))
+* **build:** ship curated release notes to the What's new tab and the release body ([ceff68a](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/ceff68ac96a053903796b3836cbc42f979d201aa))
+
+### Bug Fixes
+
+* **build:** keep severity strings out of the options keptAtError copies ([426ea87](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/426ea878c54b011e9dd5c369328ebe75cd0db0b1))
+* **plugin:** stop Immer from freezing the shared default settings ([a31385b](https://github.com/dsebastien/obsidian-hidden-folders-access/commit/a31385b85dba4b05992256f864d52e69e653f40e))
+
 ## [2.1.1](https://github.com/dsebastien/obsidian-hidden-folders-access/compare/2.1.0...2.1.1) (2026-09-28)
 
 ### Bug Fixes
@@ -111,6 +123,7 @@ uses the declarative settings API introduced in Obsidian 1.13.
 ## 0.1.0 (2026-04-15)
 
 Initial release. See [docs/release-notes.md](./docs/release-notes.md) for details.
+
 
 
 
