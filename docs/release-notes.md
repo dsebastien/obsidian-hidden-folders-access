@@ -1,5 +1,11 @@
 # Release Notes
 
+## 2.2.1 (2026-11-24)
+
+### Performance Improvements
+
+- **plugin:** keep the metadata of hidden files across restarts
+
 ## 2.2.0 (2026-10-26)
 
 ### Features
