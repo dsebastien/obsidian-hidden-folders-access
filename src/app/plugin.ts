@@ -1,5 +1,5 @@
 import { registerWhatsNewView } from './whats-new'
-import { Notice, Plugin } from 'obsidian'
+import { debounce, Notice, Plugin, TAbstractFile } from 'obsidian'
 import { produce } from 'immer'
 import type { Draft } from 'immer'
 import {
@@ -15,6 +15,9 @@ import { log } from '../utils/log'
 const INDEX_PROGRESS_INTERVAL_MS = 500
 const COMPLETION_NOTICE_MS = 4000
 const ERROR_NOTICE_MS = 8000
+/** Per-vault localStorage key of the metadata-cache snapshot. */
+export const METADATA_SNAPSHOT_KEY = 'hidden-folders-access:metadata-snapshot'
+const SNAPSHOT_SAVE_DELAY_MS = 5000
 
 export class HiddenFoldersAccessPlugin extends Plugin {
     override settings: PluginSettings = produce(createDefaultSettings(), () => {})
@@ -27,6 +30,13 @@ export class HiddenFoldersAccessPlugin extends Plugin {
         await this.loadSettings()
 
         this.addSettingTab(new HiddenFoldersAccessSettingsTab(this.app, this))
+
+        // Put the cached metadata of the hidden files back right away: it
+        // must happen before Obsidian purges unreferenced metadata (60 s
+        // after startup) and before the files are injected on layout ready.
+        this.indexer.loadMetadataSnapshot(this.app.loadLocalStorage(METADATA_SNAPSHOT_KEY))
+        this.indexer.restoreMetadata(this.settings.enabledFolders)
+        this.registerSnapshotTriggers()
 
         this.addCommand({
             id: 'rescan-hidden-folders',
@@ -45,7 +55,52 @@ export class HiddenFoldersAccessPlugin extends Plugin {
 
     override onunload(): void {
         log('Unloading Hidden Folders Access', 'debug')
+        // Synchronous save BEFORE teardown: teardown removes the entries.
+        this.requestSnapshotSave.cancel()
+        this.saveMetadataSnapshot()
         void this.indexer.teardown()
+    }
+
+    /**
+     * Persist the metadata-cache entries of the indexed hidden files, so the
+     * next startup can restore them. localStorage is per vault, synchronous
+     * (safe in onunload) and not synced to other devices.
+     */
+    saveMetadataSnapshot(): void {
+        const snapshot = this.indexer.captureMetadataSnapshot(this.settings.enabledFolders)
+        if (snapshot === null) return
+        try {
+            this.app.saveLocalStorage(
+                METADATA_SNAPSHOT_KEY,
+                snapshot.entries.length > 0 ? snapshot : null
+            )
+        } catch (err) {
+            log('Failed to save the metadata snapshot', 'warn', err)
+        }
+    }
+
+    private readonly requestSnapshotSave = debounce(
+        () => this.saveMetadataSnapshot(),
+        SNAPSHOT_SAVE_DELAY_MS,
+        true
+    )
+
+    /**
+     * Save the snapshot (debounced) after the metadata of an indexed hidden
+     * file changes, or after such a file is deleted or renamed.
+     */
+    private registerSnapshotTriggers(): void {
+        const onPath = (file: TAbstractFile, oldPath?: string): void => {
+            if (
+                this.indexer.isIndexedPath(file.path) ||
+                (oldPath !== undefined && this.indexer.isIndexedPath(oldPath))
+            ) {
+                this.requestSnapshotSave()
+            }
+        }
+        this.registerEvent(this.app.metadataCache.on('changed', (file) => onPath(file)))
+        this.registerEvent(this.app.vault.on('delete', (file) => onPath(file)))
+        this.registerEvent(this.app.vault.on('rename', (file, oldPath) => onPath(file, oldPath)))
     }
 
     async loadSettings(): Promise<void> {
@@ -235,6 +290,7 @@ export class HiddenFoldersAccessPlugin extends Plugin {
             .disablePath(path)
             .then(() => this.indexer.enablePath(path))
             .then(() => {
+                this.requestSnapshotSave()
                 const count = this.countLoaded(path)
                 notice.setMessage(`Indexed ${path} (${count} entries)`)
                 window.setTimeout(() => notice.hide(), COMPLETION_NOTICE_MS)
@@ -268,6 +324,7 @@ export class HiddenFoldersAccessPlugin extends Plugin {
         this.indexer
             .enablePath(path)
             .then(() => {
+                this.requestSnapshotSave()
                 const count = this.countLoaded(path)
                 notice.setMessage(`Indexed ${path} (${count} entries)`)
                 window.setTimeout(() => notice.hide(), COMPLETION_NOTICE_MS)
@@ -293,6 +350,7 @@ export class HiddenFoldersAccessPlugin extends Plugin {
         this.indexer
             .disablePath(path)
             .then(() => {
+                this.requestSnapshotSave()
                 notice.setMessage(`Removed ${path} from index`)
                 window.setTimeout(() => notice.hide(), COMPLETION_NOTICE_MS)
             })

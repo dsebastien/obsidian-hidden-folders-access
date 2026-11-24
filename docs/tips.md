@@ -45,7 +45,8 @@ Any property visible in the file's frontmatter is available as a column.
 
 ## Performance
 
-- The initial scan of a large folder (thousands of files) runs in one shot. Obsidian may stutter for a few seconds while the metadata cache processes the new files. Subsequent startups are cheap — Obsidian re-reads its own cache.
+- The first scan of a large folder (thousands of files) runs in one shot. Obsidian may stutter while the metadata cache parses the new files.
+- Later startups are fast. Obsidian forgets the cached metadata of hidden files at each startup, so the plugin keeps its own record of it (in the local storage of the vault, not synced) and puts it back before it adds the files. Only the files that changed since the last session are parsed again.
 - Disabling a previously-enabled folder with thousands of entries can block the UI briefly while entries are removed. Consider closing unrelated tabs before toggling.
 
 ## Troubleshooting

@@ -3,6 +3,17 @@ import { stat } from 'node:fs/promises'
 import { extensionNotAllowed } from '../../utils/extensions'
 import { isInExcludedFolder } from '../../utils/excluded-folders'
 import { log } from '../../utils/log'
+import {
+    collectEntries,
+    type FileCacheEntry,
+    type InternalMetadataCache,
+    isUsableMetadataCache,
+    type MetadataSnapshot,
+    parseSnapshot,
+    pruneUnclaimed,
+    restoreEntries,
+    serializeSnapshot
+} from './metadata-cache-snapshot'
 
 type ReconcileFn = (fullPath: string, path: string, silent?: boolean) => Promise<void>
 type ListRecursiveChildFn = (parent: string, name: string) => Promise<void>
@@ -56,6 +67,11 @@ const yieldToEventLoop = (): Promise<void> =>
  *
  * On cleanup we remove the injected entries from the vault, stop watchers
  * and restore the original adapter methods.
+ *
+ * Restarts: Obsidian forgets the metadata-cache entries of hidden files at
+ * each startup. The indexer keeps a snapshot of them (see
+ * `metadata-cache-snapshot.ts`) and puts them back before step 2, so
+ * unchanged files are not read, hashed and parsed again.
  */
 export class HiddenFoldersIndexer {
     private readonly enabledPrefixes = new Set<string>()
@@ -64,6 +80,10 @@ export class HiddenFoldersIndexer {
     private allowedExtensions: Set<string> = new Set()
     private excludedFolders: Set<string> = new Set()
     private patches: PatchMemo | null = null
+    /** Last known metadata-cache entries of hidden files, by path. */
+    private savedEntries = new Map<string, FileCacheEntry>()
+    /** Entries put back by `restoreMetadata` that no file has claimed yet. */
+    private readonly restoredByPrefix = new Map<string, Map<string, FileCacheEntry>>()
 
     constructor(private readonly app: App) {}
 
@@ -147,6 +167,85 @@ export class HiddenFoldersIndexer {
     }
 
     /**
+     * Load the persisted metadata snapshot. Invalid input gives an empty one.
+     */
+    loadMetadataSnapshot(raw: unknown): void {
+        this.savedEntries = parseSnapshot(raw)
+    }
+
+    /**
+     * Put the saved metadata-cache entries of the files below `rawPrefixes`
+     * back into Obsidian's file cache. Must run before Obsidian's first
+     * `cleanupDeletedCache()` (60 s after startup) so that the parsed
+     * metadata of those files is not purged, and before the files are
+     * injected so that Obsidian sees an unchanged, already-indexed file.
+     *
+     * Safe to call more than once: live entries are never overwritten.
+     * Returns the number of restored entries.
+     */
+    restoreMetadata(rawPrefixes: readonly string[]): number {
+        const cache = this.metadataCacheInternals()
+        if (cache === null || this.savedEntries.size === 0) return 0
+        // Before initialize(), Obsidian would drop the entries again.
+        if (cache.initialized === false) return 0
+
+        let total = 0
+        for (const raw of rawPrefixes) {
+            const prefix = this.normalize(raw)
+            if (prefix.length === 0) continue
+            const restored = restoreEntries(cache, this.savedEntries, (p) =>
+                this.isUnderPrefix(p, prefix)
+            )
+            if (restored.size === 0) continue
+            const pending = this.restoredByPrefix.get(prefix) ?? new Map<string, FileCacheEntry>()
+            for (const [p, e] of restored) pending.set(p, e)
+            this.restoredByPrefix.set(prefix, pending)
+            total += restored.size
+        }
+        if (total > 0) log(`Restored ${total} metadata-cache entries`, 'debug')
+        return total
+    }
+
+    /**
+     * Build the snapshot to persist. Folders that are enabled and idle are
+     * read from Obsidian's file cache. For the other configured folders
+     * (missing on disk, or still being enabled or disabled), the previous
+     * entries are kept. Entries of folders that are no longer configured are
+     * dropped. Returns null when the metadata cache internals are missing.
+     */
+    captureMetadataSnapshot(configuredFolders: readonly string[]): MetadataSnapshot | null {
+        const cache = this.metadataCacheInternals()
+        if (cache === null) return null
+
+        const configured = configuredFolders.map((p) => this.normalize(p)).filter(Boolean)
+        const live = configured.filter((p) => this.enabledPrefixes.has(p) && !this.inFlight.has(p))
+        const ownerOf = (path: string): string | undefined =>
+            configured.find((prefix) => this.isUnderPrefix(path, prefix))
+
+        const next = new Map<string, FileCacheEntry>()
+        for (const [path, entry] of this.savedEntries) {
+            const owner = ownerOf(path)
+            if (owner !== undefined && !live.includes(owner)) next.set(path, entry)
+        }
+        if (live.length > 0) {
+            const fresh = collectEntries(cache, (path) =>
+                live.some((prefix) => this.isUnderPrefix(path, prefix))
+            )
+            for (const [path, entry] of fresh) next.set(path, entry)
+        }
+
+        this.savedEntries = next
+        return serializeSnapshot(next)
+    }
+
+    /**
+     * True when `path` is inside a folder that is currently enabled.
+     */
+    isIndexedPath(path: string): boolean {
+        return this.isAnyEnabled(this.normalize(path))
+    }
+
+    /**
      * Enable indexing for a set of hidden folders. Any folder already enabled
      * is left untouched. Any folder currently enabled but missing from `paths`
      * is disabled.
@@ -191,12 +290,15 @@ export class HiddenFoldersIndexer {
         // and leave the config untouched so the folder is picked up again on
         // the next sync (restart, toggle, rescan command) if it reappears.
         if (!(await this.pathExistsOnDisk(path))) {
+            this.pruneRestored(path)
             log(`Hidden folder "${path}" does not exist on disk — skipping`, 'debug')
             return
         }
 
         this.enabledPrefixes.add(path)
         this.ensurePatched()
+        // Before the cascade: each injected file then finds its entry.
+        this.restoreMetadata([path])
 
         // Obsidian's reconcile* methods take the logical vault path in both
         // arguments. The second arg is the insensitive/normalized variant —
@@ -207,6 +309,10 @@ export class HiddenFoldersIndexer {
             log(`Failed to reconcile folder "${path}"`, 'error', err)
             this.enabledPrefixes.delete(path)
             throw err
+        } finally {
+            // The cascade injects files synchronously as it walks, so every
+            // file that exists has claimed its entry by now.
+            this.pruneRestored(path)
         }
 
         try {
@@ -293,6 +399,29 @@ export class HiddenFoldersIndexer {
             await this.disablePath(path)
         }
         this.restorePatches()
+    }
+
+    /**
+     * Remove the restored entries below `prefix` that no injected file
+     * claimed (file deleted on disk, or filtered out by the settings).
+     */
+    private pruneRestored(prefix: string): void {
+        const restored = this.restoredByPrefix.get(prefix)
+        if (!restored) return
+        this.restoredByPrefix.delete(prefix)
+        const cache = this.metadataCacheInternals()
+        if (cache === null) return
+        const removed = pruneUnclaimed(
+            cache,
+            restored,
+            (p) => this.app.vault.getAbstractFileByPath(p) !== null
+        )
+        if (removed > 0) log(`Dropped ${removed} unclaimed metadata-cache entries`, 'debug')
+    }
+
+    private metadataCacheInternals(): InternalMetadataCache | null {
+        const cache: unknown = this.app.metadataCache
+        return isUsableMetadataCache(cache) ? cache : null
     }
 
     private ensurePatched(): void {
