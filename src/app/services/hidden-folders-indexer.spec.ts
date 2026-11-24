@@ -167,3 +167,134 @@ describe('HiddenFoldersIndexer', () => {
         })
     })
 })
+
+describe('HiddenFoldersIndexer metadata snapshot', () => {
+    interface Entry {
+        mtime: number
+        size: number
+        hash: string
+    }
+
+    /**
+     * Fake app whose adapter "injects" `onDisk` files when the folder is
+     * reconciled, the way Obsidian's cascade does.
+     */
+    const makeIndexingApp = (onDisk: string[], cachedHashes: string[]) => {
+        const vaultFiles = new Set<string>()
+        const metadataCache = {
+            initialized: true,
+            fileCache: {} as Record<string, Entry>,
+            metadataCache: Object.fromEntries(cachedHashes.map((h) => [h, {}])) as Record<
+                string,
+                unknown
+            >
+        }
+        const adapter = {
+            list: () => Promise.resolve({ files: [], folders: ['/.claude'] }),
+            listRecursiveChild: () => Promise.resolve(),
+            reconcileFile: () => Promise.resolve(),
+            reconcileFolderCreation: (path: string) => {
+                // Obsidian looks up the file cache while it injects each file.
+                seenAtInjection = onDisk.map((p) => [p, metadataCache.fileCache[p]?.hash ?? null])
+                for (const p of onDisk) if (p.startsWith(`${path}/`)) vaultFiles.add(p)
+                return Promise.resolve()
+            },
+            watchHiddenRecursive: () => Promise.resolve(),
+            watchers: {}
+        }
+        let seenAtInjection: [string, string | null][] = []
+        const app = {
+            vault: {
+                adapter,
+                configDir: DEFAULT_CONFIG_DIR,
+                getAllLoadedFiles: () => [],
+                getAbstractFileByPath: (p: string) => (vaultFiles.has(p) ? { path: p } : null)
+            },
+            metadataCache
+        }
+        return { app, metadataCache, injectedHashes: () => seenAtInjection }
+    }
+
+    const snapshotOf = (entries: [string, number, number, string][]) => ({ version: 1, entries })
+
+    test('restored entries are in place when the files are injected', async () => {
+        const { app, injectedHashes } = makeIndexingApp(['.claude/a.md', '.claude/b.md'], ['ha'])
+        const idx = new HiddenFoldersIndexer(app as unknown as App)
+        idx.loadMetadataSnapshot(
+            snapshotOf([
+                ['.claude/a.md', 1, 1, 'ha'],
+                ['.claude/b.md', 1, 1, 'purged']
+            ])
+        )
+
+        expect(idx.restoreMetadata(['.claude'])).toBe(1)
+        await idx.enablePath('.claude')
+
+        expect(injectedHashes()).toEqual([
+            ['.claude/a.md', 'ha'],
+            ['.claude/b.md', null]
+        ])
+    })
+
+    test('entries of files that were not injected are pruned after enable', async () => {
+        const { app, metadataCache } = makeIndexingApp(['.claude/a.md'], ['ha', 'hgone'])
+        const idx = new HiddenFoldersIndexer(app as unknown as App)
+        idx.loadMetadataSnapshot(
+            snapshotOf([
+                ['.claude/a.md', 1, 1, 'ha'],
+                ['.claude/deleted.md', 1, 1, 'hgone']
+            ])
+        )
+        idx.restoreMetadata(['.claude'])
+        expect(metadataCache.fileCache['.claude/deleted.md']).toBeDefined()
+
+        await idx.enablePath('.claude')
+
+        expect(metadataCache.fileCache['.claude/a.md']).toBeDefined()
+        expect(metadataCache.fileCache['.claude/deleted.md']).toBeUndefined()
+    })
+
+    test('restores nothing before the metadata cache is initialized', () => {
+        const { app, metadataCache } = makeIndexingApp([], ['ha'])
+        metadataCache.initialized = false
+        const idx = new HiddenFoldersIndexer(app as unknown as App)
+        idx.loadMetadataSnapshot(snapshotOf([['.claude/a.md', 1, 1, 'ha']]))
+        expect(idx.restoreMetadata(['.claude'])).toBe(0)
+    })
+
+    test('capture reads live folders and keeps the saved entries of the others', async () => {
+        const { app, metadataCache } = makeIndexingApp(['.claude/a.md'], [])
+        const idx = new HiddenFoldersIndexer(app as unknown as App)
+        idx.loadMetadataSnapshot(
+            snapshotOf([
+                ['.claude/old.md', 1, 1, 'hold'],
+                ['.agents/x.md', 1, 1, 'hx'],
+                ['.unconfigured/y.md', 1, 1, 'hy']
+            ])
+        )
+        await idx.enablePath('.claude')
+        metadataCache.fileCache['.claude/a.md'] = { mtime: 5, size: 6, hash: 'ha' }
+        metadataCache.fileCache['Notes/n.md'] = { mtime: 1, size: 1, hash: 'hn' }
+
+        const snapshot = idx.captureMetadataSnapshot(['.claude', '.agents'])
+
+        expect(snapshot?.entries).toEqual([
+            ['.agents/x.md', 1, 1, 'hx'],
+            ['.claude/a.md', 5, 6, 'ha']
+        ])
+    })
+
+    test('capture returns null when the metadata cache internals are missing', () => {
+        const idx = new HiddenFoldersIndexer(makeApp([]) as unknown as App)
+        expect(idx.captureMetadataSnapshot(['.claude'])).toBeNull()
+    })
+
+    test('isIndexedPath is true only below enabled folders', async () => {
+        const { app } = makeIndexingApp([], [])
+        const idx = new HiddenFoldersIndexer(app as unknown as App)
+        expect(idx.isIndexedPath('.claude/a.md')).toBe(false)
+        await idx.enablePath('.claude')
+        expect(idx.isIndexedPath('.claude/a.md')).toBe(true)
+        expect(idx.isIndexedPath('.claudette/a.md')).toBe(false)
+    })
+})

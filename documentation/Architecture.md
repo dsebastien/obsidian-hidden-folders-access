@@ -39,10 +39,23 @@ src/
 
 ## Lifecycle
 
-- `onload`: load settings → register settings tab → register `rescan-hidden-folders` command → on `workspace.onLayoutReady`, call `runBackgroundSync(settings.enabledFolders)`.
+- `onload`: load settings → register settings tab → register `rescan-hidden-folders` command → load the metadata snapshot and restore it for `settings.enabledFolders` → register the snapshot save triggers → on `workspace.onLayoutReady`, call `runBackgroundSync(settings.enabledFolders)`.
 - `loadSettings` also pushes `settings.allowedExtensions` into the indexer before any reconcile happens, so the filter is live for the initial `runBackgroundSync`.
 - `updateAllowedExtensions(list)`: persists the new list, refreshes the indexer's allowlist, then calls `runBackgroundRebuild` which spawns one disable-then-enable task per currently-enabled folder. Each task shows a single "Rebuilding index for <path>… N entries" notice that converges to the final count.
-- `onunload`: `indexer.teardown()` removes every injected entry, stops every watcher, and restores the adapter methods.
+- `onunload`: save the metadata snapshot (synchronous), then `indexer.teardown()` removes every injected entry, stops every watcher, and restores the adapter methods.
+
+## Metadata snapshot (fast restarts)
+
+Problem: at startup, `MetadataCache.initialize()` calls `deletePath()` for every file-cache entry whose path the vault scan did not find. The scan skips dot-folders, so each restart forgets the entries of all hidden files. Re-injecting them made Obsidian read, hash, re-parse (when `cleanupDeletedCache()` had purged the parsed metadata), write both IndexedDB stores, and fire `changed` for each file. Measured on Obsidian 1.15.1 with 63 plugins: about 215 ms of main-thread time per markdown file, so minutes of frozen UI for a few hundred files, at every start.
+
+Fix (`services/metadata-cache-snapshot.ts`, wired in the indexer and the plugin):
+
+- The plugin keeps `[path, mtime, size, hash]` for every markdown file below an enabled folder, in `app.saveLocalStorage` (per vault, synchronous, not synced). Non-markdown files have no hash and are cheap, so they are not stored.
+- `onload` puts the entries back into `metadataCache.fileCache` (memory only, never over a live entry, only when the parsed metadata for the hash is still in memory). This runs before the first `cleanupDeletedCache()` (60 s after startup), so the parsed metadata stays referenced and is not purged. `runEnable` restores again before the cascade (rebuilds, toggles).
+- When a file is injected, Obsidian finds a matching `mtime` / `size` and a known hash: the same path as any unchanged vault file at startup. The file only goes through link resolution (`resolve` / `resolved`); it is not read, hashed, parsed or written to IndexedDB, and `changed` does not fire. Its metadata is already available in `create` handlers. Measured: about 7.5 ms per file.
+- After the cascade, restored entries that no file claimed (deleted on disk, or now filtered out) are removed.
+- The snapshot is saved (debounced 5 s) after `changed`, `delete` and `rename` events below an enabled folder, after each enable, rebuild and disable task, and synchronously in `onunload` before teardown. Folders that are busy or missing keep their previous entries; folders that are no longer configured are dropped.
+- A file whose content changed while Obsidian was closed has a different `mtime` or `size`, so Obsidian parses it as usual.
 
 ## Missing configured folders
 
@@ -72,7 +85,7 @@ The strategy relies on Obsidian's desktop `FileSystemAdapter` (`reconcile*`, `wa
 ## Known trade-offs
 
 - **Undocumented internals** — the plugin calls methods Obsidian may rename without notice. Updates across Obsidian releases may require adaptation.
-- **Large folders** — the initial cascade indexes every descendant synchronously (awaited). A folder with thousands of markdown files can freeze the UI for a few seconds while the metadata worker catches up. One-off per plugin load.
+- **Large folders** — the first cascade indexes every descendant synchronously (awaited). A folder with thousands of markdown files can freeze the UI while the metadata worker parses them. Later startups restore the metadata snapshot (see below), so only changed files are parsed again.
 - **Obsidian Sync** — injected files are never synced. Sync tracks them (its `onFileAdd`/`onFileRemove` handlers react to the vault events our injection and cleanup fire), but every upload, download and deletion goes through its `allowSyncFile` filter, which is path-based and rejects any path starting with `.` (the config dir's special files aside). Consequences:
     - Each device only sees the hidden folders present on its own disk; Sync never copies `.claude/...` between devices. Use git or another tool for that.
     - Disabling a folder or unloading the plugin calls `reconcileDeletion`, which fires vault `delete` events. Sync's filter blocks these, so they never become remote deletions. Verified against Obsidian 1.14.4.
